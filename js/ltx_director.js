@@ -8787,21 +8787,39 @@ class TimelineEditor {
 
         const effectiveStart = Math.max(seg.start, startFrames);
 
-        if (effectiveStart > currentCursor) {
-          const gapLength = Math.min(effectiveStart, endFrames) - currentCursor;
-          if (contiguousLengths.length > 0) {
-            contiguousLengths[contiguousLengths.length - 1] += gapLength;
-          } else {
-            pendingGap += gapLength;
-          }
-        }
+        // Gap before this segment, clipped at the cutoff.
+        const gapLength = effectiveStart > currentCursor
+          ? Math.min(effectiveStart, endFrames) - currentCursor
+          : 0;
 
         const clippedEnd = Math.min(seg.start + seg.length, endFrames);
         const clippedLength = clippedEnd - effectiveStart;
 
-        contiguousLengths.push(clippedLength + pendingGap);
-        contiguousPrompts.push(seg.prompt || "");
-        pendingGap = 0;
+        // Image keyframes with no typed prompt do not belong on the prompt timeline:
+        // the keyframe image itself reaches the model via guide_data, so emitting an
+        // empty prompt slot here only trips the "segment missing a prompt" validation
+        // (and would hand the looping bridge an empty per-tile prompt). Absorb such a
+        // keyframe's time span — plus any preceding gap — into the adjacent prompt
+        // segment, exactly like a gap. Text segments are untouched: an empty text block
+        // still surfaces the missing-prompt error.
+        const isEmptyImageKeyframe = seg.type !== "text" && !(seg.prompt && seg.prompt.trim());
+
+        const foldInto = (amount) => {
+          if (contiguousLengths.length > 0) {
+            contiguousLengths[contiguousLengths.length - 1] += amount;
+          } else {
+            pendingGap += amount;
+          }
+        };
+
+        if (isEmptyImageKeyframe) {
+          foldInto(gapLength + clippedLength);
+        } else {
+          foldInto(gapLength);
+          contiguousLengths.push(clippedLength + pendingGap);
+          contiguousPrompts.push(seg.prompt || "");
+          pendingGap = 0;
+        }
         currentCursor = Math.max(currentCursor, seg.start + seg.length);
       }
 

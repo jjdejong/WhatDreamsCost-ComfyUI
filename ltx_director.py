@@ -960,6 +960,9 @@ class LTXDirector(io.ComfyNode):
                 MotionGuideData.Output(display_name="motion_guide_data"),
                 io.Float.Output(display_name="frame_rate", tooltip="The frame rate used for the timeline."),
                 io.Audio.Output(display_name="combined_audio", tooltip="Combined timeline audio layout."),
+                io.String.Output(display_name="local_prompts", tooltip="Passthrough of the timeline's per-segment prompts (joined with ' | '). Wire to the LTX Looping Bridge so it doesn't need a manual paste."),
+                io.String.Output(display_name="segment_lengths", tooltip="Passthrough of the timeline's per-segment pixel-frame lengths. Wire to the LTX Looping Bridge."),
+                io.String.Output(display_name="global_prompt", tooltip="Passthrough of this node's global_prompt, so the LTX Looping Bridge prepends the same global to every tile (single source of truth)."),
             ],
         )
 
@@ -1338,7 +1341,7 @@ class LTXDirector(io.ComfyNode):
         guide_data["duration_frames"] = duration_frames
         guide_data["resize_method"] = resize_method
 
-        return io.NodeOutput(patched, conditioning, latent, audio_latent, guide_data, motion_guide_data, float(frame_rate), audio_out)
+        return io.NodeOutput(patched, conditioning, latent, audio_latent, guide_data, motion_guide_data, float(frame_rate), audio_out, local_prompts, segment_lengths, global_prompt)
 
 
 NODE_CLASS_MAPPINGS = {
