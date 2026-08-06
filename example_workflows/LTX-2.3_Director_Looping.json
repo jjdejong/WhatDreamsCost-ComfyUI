@@ -9,7 +9,7 @@
       "type": "LTXVPreprocess",
       "pos": [
         0,
-        340
+        260
       ],
       "size": [
         300,
@@ -22,7 +22,7 @@
         {
           "name": "image",
           "type": "IMAGE",
-          "link": 137
+          "link": 136
         }
       ],
       "outputs": [
@@ -46,8 +46,8 @@
       "id": 111,
       "type": "SetNode",
       "pos": [
-        320,
-        400
+        400,
+        700
       ],
       "size": [
         190,
@@ -86,8 +86,8 @@
       "id": 112,
       "type": "SetNode",
       "pos": [
-        220,
-        910
+        400,
+        770
       ],
       "size": [
         190,
@@ -123,315 +123,11 @@
       "title": "Set_fps"
     },
     {
-      "id": 5,
-      "type": "PrimitiveBoolean",
-      "pos": [
-        0,
-        930
-      ],
-      "size": [
-        200,
-        80
-      ],
-      "flags": {},
-      "order": 5,
-      "mode": 0,
-      "inputs": [],
-      "outputs": [
-        {
-          "name": "BOOLEAN",
-          "type": "BOOLEAN",
-          "links": [
-            5
-          ],
-          "slot_index": 0
-        }
-      ],
-      "properties": {
-        "Node name for S&R": "PrimitiveBoolean"
-      },
-      "widgets_values": [
-        true
-      ],
-      "title": "I2V Enable"
-    },
-    {
-      "id": 113,
-      "type": "SetNode",
-      "pos": [
-        220,
-        980
-      ],
-      "size": [
-        190,
-        60
-      ],
-      "flags": {
-        "collapsed": true
-      },
-      "order": 113,
-      "mode": 0,
-      "inputs": [
-        {
-          "name": "BOOLEAN",
-          "type": "BOOLEAN",
-          "link": 5
-        }
-      ],
-      "outputs": [
-        {
-          "name": "*",
-          "type": "*",
-          "links": null
-        }
-      ],
-      "properties": {
-        "Node name for S&R": "SetNode",
-        "aux_id": "kijai/ComfyUI-KJNodes",
-        "previousName": "i2v_enable"
-      },
-      "widgets_values": [
-        "i2v_enable"
-      ],
-      "title": "Set_i2v_enable"
-    },
-    {
-      "id": 7,
-      "type": "PrimitiveInt",
-      "pos": [
-        220,
-        800
-      ],
-      "size": [
-        210,
-        100
-      ],
-      "flags": {},
-      "order": 7,
-      "mode": 0,
-      "inputs": [],
-      "outputs": [
-        {
-          "name": "INT",
-          "type": "INT",
-          "links": [
-            7
-          ],
-          "slot_index": 0
-        }
-      ],
-      "properties": {
-        "Node name for S&R": "PrimitiveInt"
-      },
-      "widgets_values": [
-        1088,
-        "fixed"
-      ],
-      "title": "Final Height Target"
-    },
-    {
-      "id": 16,
-      "type": "GetImageSize",
-      "pos": [
-        0,
-        580
-      ],
-      "size": [
-        300,
-        100
-      ],
-      "flags": {},
-      "order": 16,
-      "mode": 0,
-      "inputs": [
-        {
-          "name": "image",
-          "type": "IMAGE",
-          "link": 136
-        }
-      ],
-      "outputs": [
-        {
-          "name": "width",
-          "type": "INT",
-          "links": [
-            9
-          ],
-          "slot_index": 0
-        },
-        {
-          "name": "height",
-          "type": "INT",
-          "links": [
-            10
-          ],
-          "slot_index": 1
-        },
-        {
-          "name": "batch_size",
-          "type": "INT",
-          "links": [],
-          "slot_index": 2
-        }
-      ],
-      "properties": {
-        "Node name for S&R": "GetImageSize"
-      },
-      "widgets_values": [],
-      "title": "Reference Image Size"
-    },
-    {
-      "id": 17,
-      "type": "ComfyMathExpression",
-      "pos": [
-        470,
-        1000
-      ],
-      "size": [
-        290,
-        150
-      ],
-      "flags": {},
-      "order": 17,
-      "mode": 0,
-      "inputs": [
-        {
-          "name": "values.a",
-          "type": "FLOAT,INT",
-          "link": 7
-        }
-      ],
-      "outputs": [
-        {
-          "name": "FLOAT",
-          "type": "FLOAT",
-          "links": [],
-          "slot_index": 0
-        },
-        {
-          "name": "INT",
-          "type": "INT",
-          "links": [
-            8,
-            13
-          ],
-          "slot_index": 1
-        }
-      ],
-      "properties": {
-        "Node name for S&R": "ComfyMathExpression"
-      },
-      "widgets_values": [
-        "max(64, round(a / 64) * 64)"
-      ],
-      "title": "Align Final Height x64"
-    },
-    {
-      "id": 18,
-      "type": "ComfyMathExpression",
-      "pos": [
-        780,
-        1000
-      ],
-      "size": [
-        290,
-        150
-      ],
-      "flags": {},
-      "order": 18,
-      "mode": 0,
-      "inputs": [
-        {
-          "name": "values.a",
-          "type": "FLOAT,INT",
-          "link": 8
-        },
-        {
-          "name": "values.b",
-          "type": "FLOAT,INT",
-          "link": 9
-        },
-        {
-          "name": "values.c",
-          "type": "FLOAT,INT",
-          "link": 10
-        }
-      ],
-      "outputs": [
-        {
-          "name": "FLOAT",
-          "type": "FLOAT",
-          "links": [],
-          "slot_index": 0
-        },
-        {
-          "name": "INT",
-          "type": "INT",
-          "links": [
-            11
-          ],
-          "slot_index": 1
-        }
-      ],
-      "properties": {
-        "Node name for S&R": "ComfyMathExpression"
-      },
-      "widgets_values": [
-        "max(64, round((a * b / max(1, c)) / 64) * 64)"
-      ],
-      "title": "Final Width From Ref Aspect"
-    },
-    {
-      "id": 19,
-      "type": "ComfyMathExpression",
-      "pos": [
-        1090,
-        1000
-      ],
-      "size": [
-        290,
-        150
-      ],
-      "flags": {},
-      "order": 19,
-      "mode": 0,
-      "inputs": [
-        {
-          "name": "values.a",
-          "type": "FLOAT,INT",
-          "link": 11
-        }
-      ],
-      "outputs": [
-        {
-          "name": "FLOAT",
-          "type": "FLOAT",
-          "links": [],
-          "slot_index": 0
-        },
-        {
-          "name": "INT",
-          "type": "INT",
-          "links": [
-            12
-          ],
-          "slot_index": 1
-        }
-      ],
-      "properties": {
-        "Node name for S&R": "ComfyMathExpression"
-      },
-      "widgets_values": [
-        "max(32, int(a / 2))"
-      ],
-      "title": "Stage 1 Width"
-    },
-    {
       "id": 114,
       "type": "SetNode",
       "pos": [
-        1100,
-        1180
+        400,
+        840
       ],
       "size": [
         190,
@@ -467,56 +163,11 @@
       "title": "Set_stage_1_width"
     },
     {
-      "id": 23,
-      "type": "ComfyMathExpression",
-      "pos": [
-        470,
-        1180
-      ],
-      "size": [
-        290,
-        150
-      ],
-      "flags": {},
-      "order": 23,
-      "mode": 0,
-      "inputs": [
-        {
-          "name": "values.a",
-          "type": "FLOAT,INT",
-          "link": 13
-        }
-      ],
-      "outputs": [
-        {
-          "name": "FLOAT",
-          "type": "FLOAT",
-          "links": [],
-          "slot_index": 0
-        },
-        {
-          "name": "INT",
-          "type": "INT",
-          "links": [
-            14
-          ],
-          "slot_index": 1
-        }
-      ],
-      "properties": {
-        "Node name for S&R": "ComfyMathExpression"
-      },
-      "widgets_values": [
-        "max(32, int(a / 2))"
-      ],
-      "title": "Stage 1 Height"
-    },
-    {
       "id": 115,
       "type": "SetNode",
       "pos": [
-        780,
-        1230
+        400,
+        910
       ],
       "size": [
         190,
@@ -555,8 +206,8 @@
       "id": 116,
       "type": "SetNode",
       "pos": [
-        450,
-        1380
+        400,
+        980
       ],
       "size": [
         190,
@@ -595,8 +246,8 @@
       "id": 117,
       "type": "SetNode",
       "pos": [
-        450,
-        1450
+        400,
+        1050
       ],
       "size": [
         190,
@@ -635,8 +286,8 @@
       "id": 118,
       "type": "SetNode",
       "pos": [
-        650,
-        1380
+        620,
+        700
       ],
       "size": [
         190,
@@ -675,8 +326,8 @@
       "id": 119,
       "type": "SetNode",
       "pos": [
-        650,
-        1450
+        620,
+        770
       ],
       "size": [
         190,
@@ -715,8 +366,8 @@
       "id": 120,
       "type": "SetNode",
       "pos": [
-        850,
-        1380
+        620,
+        840
       ],
       "size": [
         190,
@@ -756,7 +407,7 @@
       "type": "Note",
       "pos": [
         0,
-        1410
+        680
       ],
       "size": [
         440,
@@ -779,7 +430,7 @@
       "type": "CheckpointLoaderSimple",
       "pos": [
         600,
-        0
+        -60
       ],
       "size": [
         350,
@@ -824,8 +475,8 @@
       "id": 121,
       "type": "SetNode",
       "pos": [
-        960,
-        70
+        620,
+        1050
       ],
       "size": [
         190,
@@ -865,7 +516,7 @@
       "type": "LTXAVTextEncoderLoader",
       "pos": [
         600,
-        180
+        100
       ],
       "size": [
         380,
@@ -900,7 +551,7 @@
       "type": "LTXVAudioVAELoader",
       "pos": [
         600,
-        400
+        260
       ],
       "size": [
         350,
@@ -931,8 +582,8 @@
       "id": 122,
       "type": "SetNode",
       "pos": [
-        960,
-        420
+        840,
+        700
       ],
       "size": [
         190,
@@ -972,7 +623,7 @@
       "type": "LoraLoaderModelOnly",
       "pos": [
         600,
-        530
+        400
       ],
       "size": [
         380,
@@ -1012,7 +663,7 @@
       "type": "Power Lora Loader (rgthree)",
       "pos": [
         600,
-        660
+        680
       ],
       "size": [
         400,
@@ -1063,8 +714,8 @@
       "id": 123,
       "type": "SetNode",
       "pos": [
-        1010,
-        860
+        840,
+        770
       ],
       "size": [
         190,
@@ -1104,7 +755,7 @@
       "type": "LatentUpscaleModelLoader",
       "pos": [
         600,
-        880
+        540
       ],
       "size": [
         380,
@@ -1135,8 +786,8 @@
       "id": 124,
       "type": "SetNode",
       "pos": [
-        1010,
-        1250
+        840,
+        840
       ],
       "size": [
         190,
@@ -1306,8 +957,8 @@
       "id": 126,
       "type": "SetNode",
       "pos": [
-        1470,
-        400
+        840,
+        910
       ],
       "size": [
         190,
@@ -1346,8 +997,8 @@
       "id": 127,
       "type": "SetNode",
       "pos": [
-        1470,
-        470
+        840,
+        980
       ],
       "size": [
         190,
@@ -1580,7 +1231,7 @@
         {
           "name": "frame_rate",
           "type": "INT",
-          "link": 40
+          "link": 137
         }
       ],
       "outputs": [
@@ -1637,81 +1288,6 @@
         "audio_vae"
       ],
       "title": "Get_audio_vae"
-    },
-    {
-      "id": 34,
-      "type": "CM_FloatToInt",
-      "pos": [
-        1770,
-        320
-      ],
-      "size": [
-        150,
-        80
-      ],
-      "flags": {},
-      "order": 34,
-      "mode": 0,
-      "inputs": [
-        {
-          "name": "a",
-          "type": "FLOAT",
-          "link": 39
-        }
-      ],
-      "outputs": [
-        {
-          "name": "INT",
-          "type": "INT",
-          "links": [
-            40
-          ],
-          "slot_index": 0
-        }
-      ],
-      "properties": {
-        "Node name for S&R": "CM_FloatToInt"
-      },
-      "widgets_values": [
-        0
-      ],
-      "title": "FPS\u2192Int"
-    },
-    {
-      "id": 132,
-      "type": "GetNode",
-      "pos": [
-        1560,
-        330
-      ],
-      "size": [
-        190,
-        58
-      ],
-      "flags": {
-        "collapsed": true
-      },
-      "order": 132,
-      "mode": 0,
-      "inputs": [],
-      "outputs": [
-        {
-          "name": "FLOAT",
-          "type": "FLOAT",
-          "links": [
-            39
-          ],
-          "slot_index": 0
-        }
-      ],
-      "properties": {
-        "Node name for S&R": "GetNode",
-        "aux_id": "kijai/ComfyUI-KJNodes"
-      },
-      "widgets_values": [
-        "fps"
-      ],
-      "title": "Get_fps"
     },
     {
       "id": 33,
@@ -1876,7 +1452,7 @@
       "type": "SetNode",
       "pos": [
         2220,
-        1220
+        1180
       ],
       "size": [
         190,
@@ -2295,7 +1871,7 @@
         0.15,
         0,
         1000,
-        "0, 224, 384, 544, 704"
+        ""
       ],
       "title": "Stage 1 \u2014 Generate",
       "color": "#335533",
@@ -3257,7 +2833,7 @@
         0.0,
         0,
         1000,
-        "0, 224, 384, 544, 704"
+        ""
       ],
       "title": "Stage 2 \u2014 Refine",
       "color": "#333355",
@@ -3842,8 +3418,8 @@
       "id": 170,
       "type": "SetNode",
       "pos": [
-        1400,
-        1040
+        620,
+        910
       ],
       "size": [
         190,
@@ -3882,8 +3458,8 @@
       "id": 173,
       "type": "SetNode",
       "pos": [
-        1550,
-        570
+        620,
+        980
       ],
       "size": [
         190,
@@ -3919,387 +3495,11 @@
       "title": "Set_tile_prompt_conditioning"
     },
     {
-      "id": 174,
-      "type": "GetNode",
-      "pos": [
-        460,
-        2000
-      ],
-      "size": [
-        190,
-        58
-      ],
-      "flags": {
-        "collapsed": true
-      },
-      "order": 174,
-      "mode": 0,
-      "inputs": [],
-      "outputs": [
-        {
-          "name": "STRING",
-          "type": "STRING",
-          "links": [
-            106
-          ],
-          "slot_index": 0
-        }
-      ],
-      "properties": {
-        "Node name for S&R": "GetNode",
-        "aux_id": "kijai/ComfyUI-KJNodes"
-      },
-      "widgets_values": [
-        "global_prompt"
-      ],
-      "title": "Get_global_prompt"
-    },
-    {
-      "id": 84,
-      "type": "StringConcatenate",
-      "pos": [
-        460,
-        1820
-      ],
-      "size": [
-        240,
-        166
-      ],
-      "flags": {},
-      "order": 84,
-      "mode": 0,
-      "inputs": [
-        {
-          "name": "string_a",
-          "type": "STRING",
-          "link": 106,
-          "widget": {
-            "name": "string_a"
-          }
-        },
-        {
-          "name": "string_b",
-          "type": "STRING",
-          "link": null,
-          "widget": {
-            "name": "string_b"
-          }
-        },
-        {
-          "name": "delimiter",
-          "type": "STRING",
-          "link": null,
-          "widget": {
-            "name": "delimiter"
-          }
-        }
-      ],
-      "outputs": [
-        {
-          "name": "STRING",
-          "type": "STRING",
-          "links": [],
-          "slot_index": 0
-        }
-      ],
-      "properties": {
-        "Node name for S&R": "StringConcatenate"
-      },
-      "widgets_values": [
-        "",
-        "",
-        " "
-      ],
-      "title": "Global + Tile 0 Snippet"
-    },
-    {
-      "id": 175,
-      "type": "GetNode",
-      "pos": [
-        460,
-        2330
-      ],
-      "size": [
-        190,
-        58
-      ],
-      "flags": {
-        "collapsed": true
-      },
-      "order": 175,
-      "mode": 0,
-      "inputs": [],
-      "outputs": [
-        {
-          "name": "STRING",
-          "type": "STRING",
-          "links": [
-            108
-          ],
-          "slot_index": 0
-        }
-      ],
-      "properties": {
-        "Node name for S&R": "GetNode",
-        "aux_id": "kijai/ComfyUI-KJNodes"
-      },
-      "widgets_values": [
-        "global_prompt"
-      ],
-      "title": "Get_global_prompt"
-    },
-    {
-      "id": 87,
-      "type": "StringConcatenate",
-      "pos": [
-        460,
-        2150
-      ],
-      "size": [
-        240,
-        166
-      ],
-      "flags": {},
-      "order": 87,
-      "mode": 0,
-      "inputs": [
-        {
-          "name": "string_a",
-          "type": "STRING",
-          "link": 108,
-          "widget": {
-            "name": "string_a"
-          }
-        },
-        {
-          "name": "string_b",
-          "type": "STRING",
-          "link": null,
-          "widget": {
-            "name": "string_b"
-          }
-        },
-        {
-          "name": "delimiter",
-          "type": "STRING",
-          "link": null,
-          "widget": {
-            "name": "delimiter"
-          }
-        }
-      ],
-      "outputs": [
-        {
-          "name": "STRING",
-          "type": "STRING",
-          "links": [],
-          "slot_index": 0
-        }
-      ],
-      "properties": {
-        "Node name for S&R": "StringConcatenate"
-      },
-      "widgets_values": [
-        "",
-        "",
-        " "
-      ],
-      "title": "Global + Tile 1 Snippet"
-    },
-    {
-      "id": 176,
-      "type": "GetNode",
-      "pos": [
-        460,
-        2660
-      ],
-      "size": [
-        190,
-        58
-      ],
-      "flags": {
-        "collapsed": true
-      },
-      "order": 176,
-      "mode": 0,
-      "inputs": [],
-      "outputs": [
-        {
-          "name": "STRING",
-          "type": "STRING",
-          "links": [
-            110
-          ],
-          "slot_index": 0
-        }
-      ],
-      "properties": {
-        "Node name for S&R": "GetNode",
-        "aux_id": "kijai/ComfyUI-KJNodes"
-      },
-      "widgets_values": [
-        "global_prompt"
-      ],
-      "title": "Get_global_prompt"
-    },
-    {
-      "id": 90,
-      "type": "StringConcatenate",
-      "pos": [
-        460,
-        2480
-      ],
-      "size": [
-        240,
-        166
-      ],
-      "flags": {},
-      "order": 90,
-      "mode": 0,
-      "inputs": [
-        {
-          "name": "string_a",
-          "type": "STRING",
-          "link": 110,
-          "widget": {
-            "name": "string_a"
-          }
-        },
-        {
-          "name": "string_b",
-          "type": "STRING",
-          "link": null,
-          "widget": {
-            "name": "string_b"
-          }
-        },
-        {
-          "name": "delimiter",
-          "type": "STRING",
-          "link": null,
-          "widget": {
-            "name": "delimiter"
-          }
-        }
-      ],
-      "outputs": [
-        {
-          "name": "STRING",
-          "type": "STRING",
-          "links": [],
-          "slot_index": 0
-        }
-      ],
-      "properties": {
-        "Node name for S&R": "StringConcatenate"
-      },
-      "widgets_values": [
-        "",
-        "",
-        " "
-      ],
-      "title": "Global + Tile 2 Snippet"
-    },
-    {
-      "id": 177,
-      "type": "GetNode",
-      "pos": [
-        460,
-        2990
-      ],
-      "size": [
-        190,
-        58
-      ],
-      "flags": {
-        "collapsed": true
-      },
-      "order": 177,
-      "mode": 0,
-      "inputs": [],
-      "outputs": [
-        {
-          "name": "STRING",
-          "type": "STRING",
-          "links": [
-            112
-          ],
-          "slot_index": 0
-        }
-      ],
-      "properties": {
-        "Node name for S&R": "GetNode",
-        "aux_id": "kijai/ComfyUI-KJNodes"
-      },
-      "widgets_values": [
-        "global_prompt"
-      ],
-      "title": "Get_global_prompt"
-    },
-    {
-      "id": 93,
-      "type": "StringConcatenate",
-      "pos": [
-        460,
-        2810
-      ],
-      "size": [
-        240,
-        166
-      ],
-      "flags": {},
-      "order": 93,
-      "mode": 0,
-      "inputs": [
-        {
-          "name": "string_a",
-          "type": "STRING",
-          "link": 112,
-          "widget": {
-            "name": "string_a"
-          }
-        },
-        {
-          "name": "string_b",
-          "type": "STRING",
-          "link": null,
-          "widget": {
-            "name": "string_b"
-          }
-        },
-        {
-          "name": "delimiter",
-          "type": "STRING",
-          "link": null,
-          "widget": {
-            "name": "delimiter"
-          }
-        }
-      ],
-      "outputs": [
-        {
-          "name": "STRING",
-          "type": "STRING",
-          "links": [],
-          "slot_index": 0
-        }
-      ],
-      "properties": {
-        "Node name for S&R": "StringConcatenate"
-      },
-      "widgets_values": [
-        "",
-        "",
-        " "
-      ],
-      "title": "Global + Tile 3 Snippet"
-    },
-    {
       "id": 300,
       "type": "LTXLoopingDirector",
       "pos": [
-        1150,
-        1500
+        1050,
+        700
       ],
       "size": [
         760,
@@ -4323,43 +3523,35 @@
           }
         },
         {
-          "name": "first_tile_prompt",
-          "type": "STRING",
-          "link": null,
-          "widget": {
-            "name": "first_tile_prompt"
-          }
-        },
-        {
-          "name": "frame_count",
-          "type": "INT",
-          "link": null,
-          "widget": {
-            "name": "frame_count"
-          }
-        },
-        {
-          "name": "temporal_tile_size",
-          "type": "INT",
-          "link": null,
-          "widget": {
-            "name": "temporal_tile_size"
-          }
-        },
-        {
-          "name": "temporal_overlap",
-          "type": "INT",
-          "link": null,
-          "widget": {
-            "name": "temporal_overlap"
-          }
-        },
-        {
           "name": "frame_rate",
           "type": "FLOAT",
           "link": null,
           "widget": {
             "name": "frame_rate"
+          }
+        },
+        {
+          "name": "total_duration",
+          "type": "FLOAT",
+          "link": null,
+          "widget": {
+            "name": "total_duration"
+          }
+        },
+        {
+          "name": "tile_duration",
+          "type": "FLOAT",
+          "link": null,
+          "widget": {
+            "name": "tile_duration"
+          }
+        },
+        {
+          "name": "overlap_duration",
+          "type": "FLOAT",
+          "link": null,
+          "widget": {
+            "name": "overlap_duration"
           }
         },
         {
@@ -4371,43 +3563,19 @@
           }
         },
         {
-          "name": "custom_width",
+          "name": "target_height",
           "type": "INT",
           "link": null,
           "widget": {
-            "name": "custom_width"
+            "name": "target_height"
           }
         },
         {
-          "name": "custom_height",
+          "name": "reference_keyframe_index",
           "type": "INT",
           "link": null,
           "widget": {
-            "name": "custom_height"
-          }
-        },
-        {
-          "name": "resize_method",
-          "type": "COMBO",
-          "link": null,
-          "widget": {
-            "name": "resize_method"
-          }
-        },
-        {
-          "name": "divisible_by",
-          "type": "INT",
-          "link": null,
-          "widget": {
-            "name": "divisible_by"
-          }
-        },
-        {
-          "name": "img_compression",
-          "type": "INT",
-          "link": null,
-          "widget": {
-            "name": "img_compression"
+            "name": "reference_keyframe_index"
           }
         }
       ],
@@ -4472,7 +3640,8 @@
           "name": "frame_rate",
           "type": "FLOAT",
           "links": [
-            4
+            4,
+            137
           ],
           "slot_index": 7
         },
@@ -4487,32 +3656,49 @@
         {
           "name": "start_image",
           "type": "IMAGE",
-          "links": [
-            136,
-            137
-          ],
+          "links": [],
           "slot_index": 9
+        },
+        {
+          "name": "stage_1_width",
+          "type": "INT",
+          "links": [
+            12
+          ],
+          "slot_index": 10
+        },
+        {
+          "name": "stage_1_height",
+          "type": "INT",
+          "links": [
+            14
+          ],
+          "slot_index": 11
+        },
+        {
+          "name": "reference_image",
+          "type": "IMAGE",
+          "links": [
+            136
+          ],
+          "slot_index": 12
         }
       ],
       "properties": {
         "Node name for S&R": "LTXLoopingDirector",
-        "timeline_data": "{\"version\":1,\"tile_prompts\":[\"\"],\"keyframes\":[{\"frame\":0,\"imageFile\":\"reference_image.png\"}]}",
-        "looping_director_timeline": "{\"version\":1,\"tile_prompts\":[\"\"],\"keyframes\":[{\"frame\":0,\"imageFile\":\"reference_image.png\"}]}",
+        "timeline_data": "{\"version\":1,\"tile_prompts\":[\"While the woman lowers her leg, the camera performs a slow orbit from a front view to a right quarter view. zhuanchang\",\"While the woman lowers her leg, the camera performs a slow orbit from a front view to a right quarter view. zhuanchang\",\"While the woman lowers her leg, the camera performs a slow orbit from a front view to a right quarter view. zhuanchang\",\"While the woman lowers her leg, the camera performs a slow orbit from a front view to a right quarter view. zhuanchang\"],\"keyframes\":[{\"frame\":0,\"imageFile\":\"reference_image.png\"}]}",
+        "looping_director_timeline": "{\"version\":1,\"tile_prompts\":[\"While the woman lowers her leg, the camera performs a slow orbit from a front view to a right quarter view. zhuanchang\",\"While the woman lowers her leg, the camera performs a slow orbit from a front view to a right quarter view. zhuanchang\",\"While the woman lowers her leg, the camera performs a slow orbit from a front view to a right quarter view. zhuanchang\",\"While the woman lowers her leg, the camera performs a slow orbit from a front view to a right quarter view. zhuanchang\"],\"keyframes\":[{\"frame\":0,\"imageFile\":\"reference_image.png\"}]}",
         "has_serialized_properties": true
       },
       "widgets_values": [
-        121,
-        240,
-        64,
+        "{\"version\":1,\"tile_prompts\":[\"While the woman lowers her leg, the camera performs a slow orbit from a front view to a right quarter view. zhuanchang\",\"While the woman lowers her leg, the camera performs a slow orbit from a front view to a right quarter view. zhuanchang\",\"While the woman lowers her leg, the camera performs a slow orbit from a front view to a right quarter view. zhuanchang\",\"While the woman lowers her leg, the camera performs a slow orbit from a front view to a right quarter view. zhuanchang\"],\"keyframes\":[{\"frame\":0,\"imageFile\":\"reference_image.png\"}]}",
+        "A cinematic live-action continuous shot with consistent subject identity, wardrobe, lighting, and environment. The action continues naturally across the shot without a reset or cut. Diegetic audio remains coherent with the action.",
         24.0,
-        "{\"version\":1,\"tile_prompts\":[\"\"],\"keyframes\":[{\"frame\":0,\"imageFile\":\"reference_image.png\"}]}",
-        "A cinematic live-action continuous shot with consistent subject identity, wardrobe, lighting, and environment. The action continues naturally across temporal tiles without a reset or cut. Diegetic audio remains coherent with the action.",
-        "The action is already underway in the supplied first frame. Continue smoothly from that opening motion state without a pause or reset.",
-        0,
-        0,
-        "maintain aspect ratio",
-        32,
-        18
+        30.0,
+        10.0,
+        3.3333333333333335,
+        1088,
+        0
       ],
       "title": "LTX Looping Director"
     }
@@ -4535,73 +3721,17 @@
       "FLOAT"
     ],
     [
-      5,
-      5,
-      0,
-      113,
-      0,
-      "BOOLEAN"
-    ],
-    [
-      7,
-      7,
-      0,
-      17,
-      0,
-      "INT"
-    ],
-    [
-      8,
-      17,
-      1,
-      18,
-      0,
-      "INT"
-    ],
-    [
-      9,
-      16,
-      0,
-      18,
-      1,
-      "INT"
-    ],
-    [
-      10,
-      16,
-      1,
-      18,
-      2,
-      "INT"
-    ],
-    [
-      11,
-      18,
-      1,
-      19,
-      0,
-      "INT"
-    ],
-    [
       12,
-      19,
-      1,
+      300,
+      10,
       114,
       0,
       "INT"
     ],
     [
-      13,
-      17,
-      1,
-      23,
-      0,
-      "INT"
-    ],
-    [
       14,
-      23,
-      1,
+      300,
+      11,
       115,
       0,
       "INT"
@@ -4772,22 +3902,6 @@
       0,
       31,
       1,
-      "INT"
-    ],
-    [
-      39,
-      132,
-      0,
-      34,
-      0,
-      "FLOAT"
-    ],
-    [
-      40,
-      34,
-      0,
-      31,
-      2,
       "INT"
     ],
     [
@@ -5207,38 +4321,6 @@
       "CONDITIONING"
     ],
     [
-      106,
-      174,
-      0,
-      84,
-      0,
-      "STRING"
-    ],
-    [
-      108,
-      175,
-      0,
-      87,
-      0,
-      "STRING"
-    ],
-    [
-      110,
-      176,
-      0,
-      90,
-      0,
-      "STRING"
-    ],
-    [
-      112,
-      177,
-      0,
-      93,
-      0,
-      "STRING"
-    ],
-    [
       132,
       11,
       0,
@@ -5273,18 +4355,18 @@
     [
       136,
       300,
-      9,
-      16,
+      12,
+      2,
       0,
       "IMAGE"
     ],
     [
       137,
       300,
-      9,
+      7,
+      31,
       2,
-      0,
-      "IMAGE"
+      "FLOAT"
     ]
   ],
   "groups": [
@@ -5294,8 +4376,8 @@
       "bounding": [
         -240,
         -90,
-        790,
-        1870
+        700,
+        1200
       ],
       "color": "#6a8b80",
       "font_size": 24,
@@ -5308,7 +4390,7 @@
         560,
         -90,
         670,
-        1430
+        900
       ],
       "color": "#8a6d3b",
       "font_size": 24,
@@ -5318,10 +4400,10 @@
       "id": 3,
       "title": "Prompt Conditioning",
       "bounding": [
-        1110,
+        1060,
         -110,
-        820,
-        1260
+        660,
+        650
       ],
       "color": "#76518a",
       "font_size": 24,
@@ -5331,10 +4413,10 @@
       "id": 4,
       "title": "Dimensions + Timing Buses",
       "bounding": [
-        440,
-        960,
-        980,
-        590
+        300,
+        620,
+        1550,
+        700
       ],
       "color": "#5b7e9c",
       "font_size": 24,
@@ -5344,9 +4426,9 @@
       "id": 5,
       "title": "Stage 1 Base AV",
       "bounding": [
-        1710,
+        1850,
         -120,
-        1540,
+        1400,
         1490
       ],
       "color": "#51724d",
@@ -5376,19 +4458,6 @@
         1120
       ],
       "color": "#9b6c4b",
-      "font_size": 24,
-      "flags": {}
-    },
-    {
-      "id": 8,
-      "title": "Late References + Tile Snippets",
-      "bounding": [
-        -440,
-        1740,
-        1670,
-        1450
-      ],
-      "color": "#3f789e",
       "font_size": 24,
       "flags": {}
     }

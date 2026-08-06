@@ -1,6 +1,7 @@
 import hashlib
 import json
 import logging
+import math
 import os
 
 import comfy.utils
@@ -12,11 +13,14 @@ from PIL import Image, ImageOps
 
 from comfy_api.latest import io
 
-from .ltx_director import _compress_image, _resize_image
-
 log = logging.getLogger(__name__)
 
 LTX_TIME_SCALE = 8
+DEFAULT_FRAME_RATE = 24.0
+DEFAULT_TOTAL_DURATION = 48.0
+DEFAULT_TILE_DURATION = 10.0
+DEFAULT_OVERLAP_DURATION = 2.0
+DEFAULT_TARGET_HEIGHT = 1088
 
 
 def _parse_timeline(timeline_data):
@@ -33,12 +37,8 @@ def _parse_timeline(timeline_data):
     if not isinstance(data, dict):
         raise ValueError("LTXLoopingDirector: timeline_data must contain a JSON object")
 
-    tile_prompts = data.get("tile_prompts", [])
-    keyframes = data.get("keyframes", [])
-    if tile_prompts is None:
-        tile_prompts = []
-    if keyframes is None:
-        keyframes = []
+    tile_prompts = data.get("tile_prompts", []) or []
+    keyframes = data.get("keyframes", []) or []
     if not isinstance(tile_prompts, list):
         raise ValueError("LTXLoopingDirector: tile_prompts must be a JSON array")
     if not isinstance(keyframes, list):
@@ -46,76 +46,99 @@ def _parse_timeline(timeline_data):
 
     for index, prompt in enumerate(tile_prompts):
         if not isinstance(prompt, str):
-            raise ValueError(
-                f"LTXLoopingDirector: tile_prompts[{index}] must be a string"
-            )
+            raise ValueError(f"LTXLoopingDirector: tile_prompts[{index}] must be a string")
 
     return data, tile_prompts, keyframes
 
 
+def _aligned_frames(seconds, frame_rate, minimum):
+    frames = round(float(seconds) * float(frame_rate) / LTX_TIME_SCALE) * LTX_TIME_SCALE
+    return max(int(minimum), frames)
+
+
 def _temporal_chunks(frame_count, temporal_tile_size, temporal_overlap):
     latent_frames = (frame_count - 1) // LTX_TIME_SCALE + 1
-    tile_frames = temporal_tile_size // LTX_TIME_SCALE
-    overlap_frames = temporal_overlap // LTX_TIME_SCALE
-    step = tile_frames - overlap_frames
-
-    chunks = []
-    for start, end in zip(
-        range(0, latent_frames + tile_frames - overlap_frames, step),
-        range(tile_frames, latent_frames + tile_frames - overlap_frames, step),
-    ):
-        chunks.append((start, min(end, latent_frames)))
-    return chunks
-
-
-def _validate_timing(frame_count, temporal_tile_size, temporal_overlap):
-    frame_count = int(frame_count)
-    temporal_tile_size = int(temporal_tile_size)
-    temporal_overlap = int(temporal_overlap)
-
-    if frame_count < 9 or (frame_count - 1) % LTX_TIME_SCALE:
-        raise ValueError(
-            "LTXLoopingDirector: frame_count must be 8n+1 and at least 9"
+    latent_tile_size = temporal_tile_size // LTX_TIME_SCALE
+    latent_overlap = temporal_overlap // LTX_TIME_SCALE
+    latent_stride = latent_tile_size - latent_overlap
+    tile_count = max(1, math.ceil((latent_frames - latent_overlap) / latent_stride))
+    return [
+        (
+            tile_index * latent_stride,
+            min(tile_index * latent_stride + latent_tile_size, latent_frames),
         )
-    if temporal_tile_size < LTX_TIME_SCALE or temporal_tile_size % LTX_TIME_SCALE:
-        raise ValueError(
-            "LTXLoopingDirector: temporal_tile_size must be a positive multiple of 8"
-        )
-    if temporal_overlap < 0 or temporal_overlap % LTX_TIME_SCALE:
-        raise ValueError(
-            "LTXLoopingDirector: temporal_overlap must be a non-negative multiple of 8"
-        )
-    if temporal_overlap >= temporal_tile_size:
-        raise ValueError(
-            "LTXLoopingDirector: temporal_overlap must be smaller than temporal_tile_size"
-        )
+        for tile_index in range(tile_count)
+    ]
 
+
+def _default_reference_frames(frame_count, temporal_tile_size, temporal_overlap):
     chunks = _temporal_chunks(frame_count, temporal_tile_size, temporal_overlap)
-    if not chunks:
-        raise ValueError(
-            "LTXLoopingDirector: the clip is too short for the selected tile size and overlap"
+    final_index = ((frame_count - 1) // LTX_TIME_SCALE) * LTX_TIME_SCALE
+    margin = temporal_overlap // 2
+    indices = [0]
+    tile_stride = temporal_tile_size - temporal_overlap
+    for tile_index in range(len(chunks)):
+        reference_index = min(
+            tile_index * tile_stride + temporal_tile_size - margin,
+            final_index,
         )
-    return chunks
+        reference_index -= reference_index % LTX_TIME_SCALE
+        if reference_index not in indices:
+            indices.append(reference_index)
+    return indices
+
+
+def _calculate_schedule(frame_rate, total_duration, tile_duration, overlap_duration):
+    frame_rate = float(frame_rate)
+    total_duration = float(total_duration)
+    tile_duration = float(tile_duration)
+    overlap_duration = float(overlap_duration)
+    if frame_rate <= 0 or total_duration <= 0 or tile_duration <= 0 or overlap_duration < 0:
+        raise ValueError("LTXLoopingDirector: timing values must be positive")
+
+    frame_count = max(
+        LTX_TIME_SCALE + 1,
+        math.floor((total_duration * frame_rate - 1) / LTX_TIME_SCALE)
+        * LTX_TIME_SCALE
+        + 1,
+    )
+    tile_size = min(_aligned_frames(tile_duration, frame_rate, 24), 1000)
+    overlap = _aligned_frames(overlap_duration, frame_rate, 16)
+    overlap = min(overlap, 80, tile_size - LTX_TIME_SCALE)
+    if frame_count > 10001:
+        raise ValueError("LTXLoopingDirector: the calculated frame_count exceeds 10001")
+
+    chunks = _temporal_chunks(frame_count, tile_size, overlap)
+    return (
+        frame_count,
+        tile_size,
+        overlap,
+        chunks,
+        _default_reference_frames(frame_count, tile_size, overlap),
+    )
+
+
+def _validate_timing(frame_rate, total_duration, tile_duration, overlap_duration):
+    return _calculate_schedule(
+        frame_rate,
+        total_duration,
+        tile_duration,
+        overlap_duration,
+    )
 
 
 def _parse_keyframes(keyframes, frame_count):
     parsed = []
     for order, keyframe in enumerate(keyframes):
         if not isinstance(keyframe, dict):
-            raise ValueError(
-                f"LTXLoopingDirector: keyframes[{order}] must be a JSON object"
-            )
+            raise ValueError(f"LTXLoopingDirector: keyframes[{order}] must be a JSON object")
 
         frame = keyframe.get("frame")
         image_file = keyframe.get("imageFile")
         if isinstance(frame, bool) or not isinstance(frame, (int, float)):
-            raise ValueError(
-                f"LTXLoopingDirector: keyframes[{order}].frame must be an integer"
-            )
+            raise ValueError(f"LTXLoopingDirector: keyframes[{order}].frame must be an integer")
         if int(frame) != frame:
-            raise ValueError(
-                f"LTXLoopingDirector: keyframes[{order}].frame must be an integer"
-            )
+            raise ValueError(f"LTXLoopingDirector: keyframes[{order}].frame must be an integer")
         frame = int(frame)
         if frame < 0 or frame >= frame_count:
             raise ValueError(
@@ -127,9 +150,7 @@ def _parse_keyframes(keyframes, frame_count):
                 f"LTXLoopingDirector: keyframe {order} is not aligned to an 8-frame grid"
             )
         if not isinstance(image_file, str) or not image_file:
-            raise ValueError(
-                f"LTXLoopingDirector: keyframes[{order}].imageFile is required"
-            )
+            raise ValueError(f"LTXLoopingDirector: keyframes[{order}].imageFile is required")
 
         parsed.append((frame, order, image_file))
 
@@ -141,9 +162,7 @@ def _resolve_keyframe(image_file):
     try:
         path = folder_paths.get_annotated_filepath(image_file)
     except (TypeError, ValueError) as exc:
-        raise ValueError(
-            f"LTXLoopingDirector: invalid keyframe path {image_file!r}"
-        ) from exc
+        raise ValueError(f"LTXLoopingDirector: invalid keyframe path {image_file!r}") from exc
     if not os.path.isfile(path):
         raise ValueError(f"LTXLoopingDirector: keyframe file not found: {image_file}")
     return path
@@ -156,41 +175,29 @@ def _load_keyframe(image_file):
             image = ImageOps.exif_transpose(image).convert("RGB")
             array = np.asarray(image, dtype=np.float32) / 255.0
     except (OSError, ValueError) as exc:
-        raise ValueError(
-            f"LTXLoopingDirector: could not read keyframe {image_file}: {exc}"
-        ) from exc
+        raise ValueError(f"LTXLoopingDirector: could not read keyframe {image_file}: {exc}") from exc
 
     if array.ndim != 3 or array.shape[0] < 1 or array.shape[1] < 1:
         raise ValueError(f"LTXLoopingDirector: keyframe {image_file} has no pixels")
     return torch.from_numpy(array).unsqueeze(0)
 
 
-def _snap(value, divisible_by):
-    return max(divisible_by, (int(value) // divisible_by) * divisible_by)
+def _aligned_dimension(value, multiple=64, minimum=64):
+    return max(minimum, round(float(value) / multiple) * multiple)
 
 
-def _process_keyframe(image, custom_width, custom_height, resize_method, divisible_by, img_compression):
-    source_h, source_w = image.shape[1:3]
-    if custom_width > 0 and custom_height > 0:
-        image = _resize_image(
-            image, custom_width, custom_height, resize_method, divisible_by
+def _resize_reference(image, width, height):
+    return (
+        comfy.utils.common_upscale(
+            image[:1].movedim(-1, 1),
+            width,
+            height,
+            "lanczos",
+            crop="disabled",
         )
-    elif custom_width > 0:
-        target_w = _snap(custom_width, divisible_by)
-        target_h = _snap(int(source_h * target_w / source_w), divisible_by)
-        image = _resize_image(image, target_w, target_h, "stretch to fit", divisible_by)
-    elif custom_height > 0:
-        target_h = _snap(custom_height, divisible_by)
-        target_w = _snap(int(source_w * target_h / source_h), divisible_by)
-        image = _resize_image(image, target_w, target_h, "stretch to fit", divisible_by)
-    else:
-        image = _resize_image(
-            image, source_w, source_h, "maintain aspect ratio", divisible_by
-        )
-
-    if img_compression > 0:
-        image = _compress_image(image, img_compression)
-    return image
+        .movedim(1, -1)
+        .clamp(0, 1)
+    )
 
 
 def _normalize_keyframe(image, width, height):
@@ -206,7 +213,7 @@ def _normalize_keyframe(image, width, height):
 
 
 class LTXLoopingDirector(io.ComfyNode):
-    """Prepare native per-tile conditioning and keyframes for LTXVLoopingSampler."""
+    """Prepare per-tile conditioning, reference images, and looping dimensions."""
 
     @classmethod
     def define_schema(cls):
@@ -216,7 +223,8 @@ class LTXLoopingDirector(io.ComfyNode):
             category="WhatDreamsCost",
             description=(
                 "Creates one prompt conditioning per looping sampler tile and a batch "
-                "of static image keyframes."
+                "of static image keyframes. Timing is entered in seconds; the frame "
+                "schedule and output dimensions are derived automatically."
             ),
             inputs=[
                 io.Clip.Input("clip", tooltip="CLIP used to encode the global and tile prompts."),
@@ -227,103 +235,70 @@ class LTXLoopingDirector(io.ComfyNode):
                     optional=True,
                     tooltip="Common prompt prepended to every temporal tile.",
                 ),
-                io.String.Input(
-                    "first_tile_prompt",
-                    multiline=True,
-                    default="",
-                    optional=True,
-                    tooltip="Additional prompt text used only for the first temporal tile.",
-                ),
-                io.Int.Input(
-                    "frame_count",
-                    default=241,
-                    min=9,
-                    max=10001,
-                    step=8,
-                    tooltip="Pixel-frame clip length. Must be 8n+1 and match the latent shells.",
-                ),
-                io.Int.Input(
-                    "temporal_tile_size",
-                    default=240,
-                    min=8,
-                    max=1000,
-                    step=8,
-                    tooltip="Temporal tile size in pixel frames. Match both looping samplers.",
-                ),
-                io.Int.Input(
-                    "temporal_overlap",
-                    default=64,
-                    min=0,
-                    max=992,
-                    step=8,
-                    tooltip="Temporal overlap in pixel frames. Match both looping samplers.",
-                ),
                 io.Float.Input(
                     "frame_rate",
-                    default=24.0,
+                    default=DEFAULT_FRAME_RATE,
                     min=1.0,
                     max=240.0,
                     step=0.01,
-                    tooltip="Frame rate stored on each conditioning.",
+                    optional=True,
+                    tooltip="Video frame rate used to convert the duration controls to LTX frame counts.",
+                ),
+                io.Float.Input(
+                    "total_duration",
+                    default=DEFAULT_TOTAL_DURATION,
+                    min=0.1,
+                    max=3600.0,
+                    step=0.1,
+                    optional=True,
+                    tooltip="Total output duration in seconds.",
+                ),
+                io.Float.Input(
+                    "tile_duration",
+                    default=DEFAULT_TILE_DURATION,
+                    min=0.1,
+                    max=3600.0,
+                    step=0.1,
+                    optional=True,
+                    tooltip="Temporal tile duration in seconds.",
+                ),
+                io.Float.Input(
+                    "overlap_duration",
+                    default=DEFAULT_OVERLAP_DURATION,
+                    min=0.1,
+                    max=3600.0,
+                    step=0.1,
+                    optional=True,
+                    tooltip="Temporal overlap between adjacent tiles in seconds.",
                 ),
                 io.String.Input(
                     "timeline_data",
-                    default='{"version":1,"tile_prompts":["",""],"keyframes":[]}',
+                    default='{"version":1,"tile_prompts":["","","","","",""] ,"keyframes":[]}',
                     tooltip="Frontend-managed tile prompts and image keyframes.",
                 ),
                 io.Int.Input(
-                    "custom_width",
+                    "target_height",
+                    default=DEFAULT_TARGET_HEIGHT,
+                    min=32,
+                    max=16384,
+                    step=32,
+                    optional=True,
+                    tooltip=(
+                        "Final output height. The frame-0 start image supplies the aspect "
+                        "ratio; width is calculated and aligned automatically."
+                    ),
+                ),
+                io.Int.Input(
+                    "reference_keyframe_index",
                     default=0,
                     min=0,
-                    max=8192,
+                    max=10000,
                     step=1,
                     optional=True,
-                    advanced=True,
-                    tooltip="Target keyframe width. Zero keeps the first image aspect/size.",
-                ),
-                io.Int.Input(
-                    "custom_height",
-                    default=0,
-                    min=0,
-                    max=8192,
-                    step=1,
-                    optional=True,
-                    advanced=True,
-                    tooltip="Target keyframe height. Zero keeps the first image aspect/size.",
-                ),
-                io.Combo.Input(
-                    "resize_method",
-                    options=[
-                        "maintain aspect ratio",
-                        "stretch to fit",
-                        "pad",
-                        "pad green",
-                        "crop",
-                    ],
-                    default="maintain aspect ratio",
-                    optional=True,
-                    advanced=True,
-                    tooltip="How keyframes are resized before batching.",
-                ),
-                io.Int.Input(
-                    "divisible_by",
-                    default=32,
-                    min=1,
-                    max=256,
-                    step=1,
-                    optional=True,
-                    advanced=True,
-                    tooltip="Final keyframe dimensions are snapped to this divisor.",
-                ),
-                io.Int.Input(
-                    "img_compression",
-                    default=18,
-                    min=0,
-                    max=100,
-                    step=1,
-                    optional=True,
-                    advanced=True,
-                    tooltip="H.264 CRF compression applied to keyframes; zero disables it.",
+                    tooltip=(
+                        "Timeline slot used for the external reference image. The editor "
+                        "shows this as a readable keyframe selector."
+                    ),
                 ),
             ],
             outputs=[
@@ -337,35 +312,59 @@ class LTXLoopingDirector(io.ComfyNode):
                 io.Float.Output(display_name="frame_rate"),
                 io.String.Output(display_name="global_prompt"),
                 io.Image.Output(display_name="start_image"),
+                io.Int.Output(display_name="stage_1_width"),
+                io.Int.Output(display_name="stage_1_height"),
+                io.Image.Output(
+                    display_name="reference_image",
+                    tooltip="Deprecated alias of start_image, retained for existing workflows.",
+                ),
             ],
         )
 
     @classmethod
-    def _validate(cls, timeline_data, frame_count, temporal_tile_size, temporal_overlap):
-        chunks = _validate_timing(frame_count, temporal_tile_size, temporal_overlap)
+    def _validate(cls, timeline_data, frame_rate, total_duration, tile_duration, overlap_duration):
+        frame_count, tile_size, overlap, chunks, _ = _validate_timing(
+            frame_rate,
+            total_duration,
+            tile_duration,
+            overlap_duration,
+        )
         data, tile_prompts, keyframes = _parse_timeline(timeline_data)
         if len(tile_prompts) != len(chunks):
             raise ValueError(
                 "LTXLoopingDirector: expected "
                 f"{len(chunks)} tile prompts, received {len(tile_prompts)}"
             )
-        _parse_keyframes(keyframes, int(frame_count))
-        return data, tile_prompts, keyframes, chunks
+        parsed = _parse_keyframes(keyframes, frame_count)
+        if parsed and parsed[0][0] != 0:
+            raise ValueError("LTXLoopingDirector: the first keyframe must be at frame 0")
+        return data, tile_prompts, keyframes, chunks, frame_count, tile_size, overlap
 
     @classmethod
     def validate_inputs(cls, **kwargs):
         try:
+            timeline_data = kwargs.get("timeline_data", "")
             cls._validate(
-                kwargs.get("timeline_data", ""),
-                kwargs.get("frame_count", 241),
-                kwargs.get("temporal_tile_size", 240),
-                kwargs.get("temporal_overlap", 64),
+                timeline_data,
+                kwargs.get("frame_rate", DEFAULT_FRAME_RATE),
+                kwargs.get("total_duration", DEFAULT_TOTAL_DURATION),
+                kwargs.get("tile_duration", DEFAULT_TILE_DURATION),
+                kwargs.get("overlap_duration", DEFAULT_OVERLAP_DURATION),
             )
-            for keyframe in _parse_keyframes(
-                _parse_timeline(kwargs.get("timeline_data", ""))[2],
-                int(kwargs.get("frame_count", 241)),
-            ):
-                _resolve_keyframe(keyframe[2])
+            frame_count = _calculate_schedule(
+                kwargs.get("frame_rate", DEFAULT_FRAME_RATE),
+                kwargs.get("total_duration", DEFAULT_TOTAL_DURATION),
+                kwargs.get("tile_duration", DEFAULT_TILE_DURATION),
+                kwargs.get("overlap_duration", DEFAULT_OVERLAP_DURATION),
+            )[0]
+            parsed = _parse_keyframes(_parse_timeline(timeline_data)[2], frame_count)
+            if parsed and not 0 <= int(kwargs.get("reference_keyframe_index", 0)) < len(parsed):
+                raise ValueError(
+                    "LTXLoopingDirector: reference_keyframe_index must select an existing "
+                    f"timeline keyframe slot (0..{len(parsed) - 1})"
+                )
+            for _, _, image_file in parsed:
+                _resolve_keyframe(image_file)
         except (TypeError, ValueError) as exc:
             return str(exc)
         return True
@@ -374,13 +373,21 @@ class LTXLoopingDirector(io.ComfyNode):
     def fingerprint_inputs(cls, timeline_data="", **kwargs):
         digest = hashlib.sha256()
         digest.update(str(timeline_data or "").encode("utf-8"))
+        digest.update(str(kwargs.get("global_prompt", "")).encode("utf-8"))
+        digest.update(str(kwargs.get("frame_rate", DEFAULT_FRAME_RATE)).encode("utf-8"))
+        digest.update(str(kwargs.get("total_duration", DEFAULT_TOTAL_DURATION)).encode("utf-8"))
+        digest.update(str(kwargs.get("tile_duration", DEFAULT_TILE_DURATION)).encode("utf-8"))
+        digest.update(str(kwargs.get("overlap_duration", DEFAULT_OVERLAP_DURATION)).encode("utf-8"))
+        digest.update(str(kwargs.get("target_height", DEFAULT_TARGET_HEIGHT)).encode("utf-8"))
+        digest.update(str(kwargs.get("reference_keyframe_index", 0)).encode("utf-8"))
         try:
-            keyframes = _parse_timeline(timeline_data)[2]
-        except (TypeError, ValueError):
-            return digest.hexdigest()
-
-        try:
-            parsed = _parse_keyframes(keyframes, int(kwargs.get("frame_count", 241)))
+            frame_count = _calculate_schedule(
+                kwargs.get("frame_rate", DEFAULT_FRAME_RATE),
+                kwargs.get("total_duration", DEFAULT_TOTAL_DURATION),
+                kwargs.get("tile_duration", DEFAULT_TILE_DURATION),
+                kwargs.get("overlap_duration", DEFAULT_OVERLAP_DURATION),
+            )[0]
+            parsed = _parse_keyframes(_parse_timeline(timeline_data)[2], frame_count)
         except (TypeError, ValueError):
             return digest.hexdigest()
 
@@ -403,19 +410,12 @@ class LTXLoopingDirector(io.ComfyNode):
         )
 
     @classmethod
-    def _build_conditionings(
-        cls, clip, global_prompt, first_tile_prompt, tile_prompts, chunks, frame_rate
-    ):
+    def _build_conditionings(cls, clip, global_prompt, tile_prompts, chunks, frame_rate):
         global_prompt = (global_prompt or "").strip()
-        first_tile_prompt = (first_tile_prompt or "").strip()
         cache = {}
         conditionings = []
-
         for tile_index in range(len(chunks)):
-            parts = [global_prompt]
-            if tile_index == 0:
-                parts.append(first_tile_prompt)
-            parts.append(tile_prompts[tile_index].strip())
+            parts = [global_prompt, tile_prompts[tile_index].strip()]
             text = "\n\n".join(part for part in parts if part) or " "
             if text not in cache:
                 cache[text] = cls._encode(clip, text, frame_rate)
@@ -423,67 +423,96 @@ class LTXLoopingDirector(io.ComfyNode):
         return conditionings
 
     @classmethod
-    def _build_keyframes(
-        cls,
-        keyframes,
-        frame_count,
-        custom_width,
-        custom_height,
-        resize_method,
-        divisible_by,
-        img_compression,
-    ):
+    def _prepare_keyframes(cls, keyframes, frame_count):
         parsed = _parse_keyframes(keyframes, frame_count)
         if not parsed:
-            return None, "", None
+            return parsed, [], None, None
+        if parsed[0][0] != 0:
+            raise ValueError("LTXLoopingDirector: the first keyframe must be at frame 0")
 
-        images = [
-            _process_keyframe(
-                _load_keyframe(image_file),
-                int(custom_width),
-                int(custom_height),
-                resize_method,
-                int(divisible_by),
-                int(img_compression),
-            )
-            for _, _, image_file in parsed
-        ]
-        height, width = images[0].shape[1:3]
-        images = [_normalize_keyframe(image, width, height) for image in images]
-        cond_images = torch.cat(images, dim=0)
+        raw_images = [_load_keyframe(image_file) for _, _, image_file in parsed]
+        height, width = raw_images[0].shape[1:3]
+        cond_images = torch.cat(
+            [_normalize_keyframe(image, width, height) for image in raw_images], dim=0
+        )
+        start_image = raw_images[0][:1]
+        return parsed, raw_images, cond_images, start_image
+
+    @classmethod
+    def _build_keyframes(cls, keyframes, frame_count):
+        parsed, _, cond_images, start_image = cls._prepare_keyframes(keyframes, frame_count)
         indices = ",".join(str(frame) for frame, _, _ in parsed)
-        start_image = next(
-            (image for (frame, _, _), image in zip(parsed, images) if frame == 0),
+        if not parsed:
+            return None, "", None
+        return cond_images, indices, start_image
+
+    @classmethod
+    def _build_keyframes_and_reference(
+        cls, keyframes, frame_count, target_height, reference_keyframe_index
+    ):
+        parsed, raw_images, cond_images, start_image = cls._prepare_keyframes(keyframes, frame_count)
+        if not parsed:
+            return None, "", None, 0, 0, None
+
+        reference_keyframe_index = int(reference_keyframe_index)
+        selected = next(
+            (
+                image
+                for (_, order, _), image in zip(parsed, raw_images)
+                if order == reference_keyframe_index
+            ),
             None,
         )
-        if start_image is not None:
-            start_image = start_image[:1]
-        return cond_images, indices, start_image
+        if selected is None:
+            raise ValueError(
+                "LTXLoopingDirector: reference_keyframe_index must select an existing "
+                f"timeline keyframe slot (0..{len(keyframes) - 1})"
+            )
+
+        source_height, source_width = start_image.shape[1:3]
+        final_height = _aligned_dimension(target_height, 64, 64)
+        final_width = _aligned_dimension(
+            final_height * source_width / source_height,
+            64,
+            64,
+        )
+        reference_image = _resize_reference(selected, final_width, final_height)
+        return (
+            cond_images,
+            ",".join(str(frame) for frame, _, _ in parsed),
+            start_image,
+            final_width // 2,
+            final_height // 2,
+            reference_image,
+        )
 
     @classmethod
     def execute(
         cls,
         clip,
         global_prompt="",
-        first_tile_prompt="",
-        frame_count=241,
-        temporal_tile_size=240,
-        temporal_overlap=64,
-        frame_rate=24.0,
+        frame_rate=DEFAULT_FRAME_RATE,
+        total_duration=DEFAULT_TOTAL_DURATION,
+        tile_duration=DEFAULT_TILE_DURATION,
+        overlap_duration=DEFAULT_OVERLAP_DURATION,
         timeline_data="",
-        custom_width=0,
-        custom_height=0,
-        resize_method="maintain aspect ratio",
-        divisible_by=32,
-        img_compression=18,
+        target_height=DEFAULT_TARGET_HEIGHT,
+        reference_keyframe_index=0,
     ):
-        custom_width = int(custom_width or 0)
-        custom_height = int(custom_height or 0)
-        resize_method = resize_method or "maintain aspect ratio"
-        divisible_by = int(divisible_by or 32)
-        img_compression = int(img_compression if img_compression is not None else 18)
-        _, tile_prompts, keyframes, chunks = cls._validate(
-            timeline_data, frame_count, temporal_tile_size, temporal_overlap
+        (
+            _,
+            tile_prompts,
+            keyframes,
+            chunks,
+            frame_count,
+            temporal_tile_size,
+            temporal_overlap,
+        ) = cls._validate(
+            timeline_data,
+            frame_rate,
+            total_duration,
+            tile_duration,
+            overlap_duration,
         )
         output_global_prompt = global_prompt or ""
         global_prompt = output_global_prompt.strip()
@@ -491,37 +520,43 @@ class LTXLoopingDirector(io.ComfyNode):
         conditionings = cls._build_conditionings(
             clip,
             global_prompt,
-            first_tile_prompt,
             tile_prompts,
             chunks,
             frame_rate,
         )
-        cond_images, cond_indices, start_image = cls._build_keyframes(
+        (
+            cond_images,
+            cond_indices,
+            start_image,
+            stage_1_width,
+            stage_1_height,
+            reference_image,
+        ) = cls._build_keyframes_and_reference(
             keyframes,
-            int(frame_count),
-            custom_width,
-            custom_height,
-            resize_method,
-            divisible_by,
-            img_compression,
+            frame_count,
+            int(target_height or DEFAULT_TARGET_HEIGHT),
+            int(reference_keyframe_index or 0),
         )
         log.info(
             "[LTXLoopingDirector] %d tile conditionings, %d keyframes, frame_count=%d",
             len(conditionings),
             0 if cond_images is None else cond_images.shape[0],
-            int(frame_count),
+            frame_count,
         )
         return io.NodeOutput(
             positive,
             conditionings,
             cond_images,
             cond_indices,
-            int(temporal_tile_size),
-            int(temporal_overlap),
-            int(frame_count),
+            temporal_tile_size,
+            temporal_overlap,
+            frame_count,
             float(frame_rate),
             output_global_prompt,
             start_image,
+            stage_1_width,
+            stage_1_height,
+            reference_image,
         )
 
 
