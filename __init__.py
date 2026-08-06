@@ -6,7 +6,7 @@ from .load_audio_ui import LoadAudioUI
 from .load_video_ui import LoadVideoUI
 from .ltx_director import LTXDirector
 from .ltx_director_guide import LTXDirectorGuide, LTXDirectorCropGuides
-from .ltx_looping_bridge import LTXLoopingBridge
+from .ltx_looping_director import LTXLoopingDirector
 from comfy_api.latest import ComfyExtension, io
 from typing_extensions import override
 
@@ -16,12 +16,12 @@ class PromptRelay(ComfyExtension):
         return [
             LTXDirector,
             LTXDirectorGuide,
-            LTXLoopingBridge,
+            LTXLoopingDirector,
         ]
 
 async def comfy_entrypoint() -> PromptRelay:
     return PromptRelay()
-    
+
 NODE_CLASS_MAPPINGS = {
     "LTXKeyframer": LTXKeyframer,
     "MultiImageLoader": MultiImageLoader,
@@ -32,7 +32,7 @@ NODE_CLASS_MAPPINGS = {
     "LTXDirector": LTXDirector,
     "LTXDirectorGuide": LTXDirectorGuide,
     "LTXDirectorCropGuides": LTXDirectorCropGuides,
-    "LTXLoopingBridge": LTXLoopingBridge,
+    "LTXLoopingDirector": LTXLoopingDirector,
 }
 
 NODE_DISPLAY_NAME_MAPPINGS = {
@@ -45,7 +45,7 @@ NODE_DISPLAY_NAME_MAPPINGS = {
     "LTXDirector": "LTX Director",
     "LTXDirectorGuide": "LTX Director Guide",
     "LTXDirectorCropGuides": "LTX Director Crop Guides",
-    "LTXLoopingBridge": "LTX Looping Bridge",
+    "LTXLoopingDirector": "LTX Looping Director",
 }
 
 WEB_DIRECTORY = "./js"

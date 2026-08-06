@@ -28,7 +28,8 @@ from .prompt_relay import (
     distribute_segment_lengths,
 )
 
-from .patches import detect_model_type, apply_patches
+from .patches import detect_model_type, apply_patches, get_current_node_id
+import weakref
 
 log = logging.getLogger(__name__)
 
@@ -770,6 +771,8 @@ def _convert_to_latent_lengths(pixel_lengths, temporal_stride, latent_frames):
     return result
 
 
+_CLONED_MODEL_CACHE = weakref.WeakKeyDictionary()
+
 def _encode_relay(model, clip, latent, global_prompt, local_prompts, segment_lengths, epsilon):
     for name, val in (("global_prompt", global_prompt),
                       ("local_prompts", local_prompts),
@@ -785,12 +788,30 @@ def _encode_relay(model, clip, latent, global_prompt, local_prompts, segment_len
     # Split prompts but do NOT filter out empty ones yet, so we can detect them
     locals_list = [p.strip() for p in local_prompts.split("|")]
     
-    # If there are no visual segments on the timeline (e.g., only using IC-LoRA motion track),
-    # bypass the local prompt chunking entirely and just use the global prompt.
-    if not locals_list or (len(locals_list) == 1 and not locals_list[0]):
-        log.info("[PromptRelay] No local segments found. Using global prompt exclusively.")
-        conditioning = clip.encode_from_tokens_scheduled(clip.tokenize(global_prompt))
-        return model.clone(), conditioning
+    unique_id = get_current_node_id()
+
+    # If there is at most one segment on the timeline, bypass attention masking for full speed
+    if len(locals_list) <= 1:
+        local_p = locals_list[0] if (locals_list and locals_list[0]) else ""
+        if global_prompt.strip() and local_p.strip():
+            active_prompt = f"{global_prompt.strip()}, {local_p.strip()}"
+        else:
+            active_prompt = local_p.strip() if local_p.strip() else global_prompt.strip()
+
+        log.info(f"[PromptRelay] Single prompt workflow detected ('{active_prompt}'). Bypassing attention masking for maximum speed.")
+        conditioning = clip.encode_from_tokens_scheduled(clip.tokenize(active_prompt))
+        
+        node_cache = _CLONED_MODEL_CACHE.setdefault(model, {})
+        cache_key = ("unpatched", unique_id)
+        if cache_key in node_cache:
+            patched = node_cache[cache_key]
+        else:
+            patched = model.clone()
+            to = patched.model_options.setdefault("transformer_options", {})
+            to["promptrelay_mask_fn"] = None
+            node_cache[cache_key] = patched
+            
+        return patched, conditioning
 
     # Check if any specific segment is empty and apply fallbacks
     for i, p in enumerate(locals_list):
@@ -830,8 +851,17 @@ def _encode_relay(model, clip, latent, global_prompt, local_prompts, segment_len
     q_token_idx = build_segments(token_ranges, effective_lengths, epsilon, None)
     mask_fn = create_mask_fn(q_token_idx, tokens_per_frame, latent_frames)
 
-    patched = model.clone()
-    apply_patches(patched, arch, mask_fn)
+    node_cache = _CLONED_MODEL_CACHE.setdefault(model, {})
+    cache_key = ("patched", unique_id)
+    if cache_key in node_cache:
+        patched = node_cache[cache_key]
+    else:
+        patched = model.clone()
+        apply_patches(patched, arch, None)
+        node_cache[cache_key] = patched
+
+    to = patched.model_options.setdefault("transformer_options", {})
+    to["promptrelay_mask_fn"] = mask_fn
 
     return patched, conditioning
 
@@ -960,9 +990,6 @@ class LTXDirector(io.ComfyNode):
                 MotionGuideData.Output(display_name="motion_guide_data"),
                 io.Float.Output(display_name="frame_rate", tooltip="The frame rate used for the timeline."),
                 io.Audio.Output(display_name="combined_audio", tooltip="Combined timeline audio layout."),
-                io.String.Output(display_name="local_prompts", tooltip="Passthrough of the timeline's per-segment prompts (joined with ' | '). Wire to the LTX Looping Bridge so it doesn't need a manual paste."),
-                io.String.Output(display_name="segment_lengths", tooltip="Passthrough of the timeline's per-segment pixel-frame lengths. Wire to the LTX Looping Bridge."),
-                io.String.Output(display_name="global_prompt", tooltip="Passthrough of this node's global_prompt, so the LTX Looping Bridge prepends the same global to every tile (single source of truth)."),
             ],
         )
 
@@ -1341,7 +1368,7 @@ class LTXDirector(io.ComfyNode):
         guide_data["duration_frames"] = duration_frames
         guide_data["resize_method"] = resize_method
 
-        return io.NodeOutput(patched, conditioning, latent, audio_latent, guide_data, motion_guide_data, float(frame_rate), audio_out, local_prompts, segment_lengths, global_prompt)
+        return io.NodeOutput(patched, conditioning, latent, audio_latent, guide_data, motion_guide_data, float(frame_rate), audio_out)
 
 
 NODE_CLASS_MAPPINGS = {
