@@ -34,10 +34,22 @@ resized to the final dimensions derived from `start_image`.
 
 ## Image preprocessing
 
-The Director batches the conditioning images without applying `img_compression`.
-`LTXVLoopingSampler` resizes and internally preprocesses those conditioning images.
-The workflow's `LTXVPreprocess` node remains the compression point for the selected
-external reference image.
+The Director batches the conditioning images without applying `img_compression`. The
+workflow's `LTXVPreprocess` node sits between the Director's `cond_images` output and
+the combined sampler, so it stays the compression point for the start image and every
+later keyframe, exactly as it was for the start image in the source workflow. The
+sampler then resizes and internally preprocesses those images as before.
+
+A text-to-video variant with no keyframes leaves `cond_images` empty; bypass or delete
+the `LTXVPreprocess` node in that case and wire the Director straight to the sampler.
+
+## Guide encoding
+
+The **Guide encoding** row in the Director editor controls how Video, IC Video, and
+Retake guides are resized and VAE-encoded: `crop` (center crop or stretch to fit), the
+resampling method, and an optional tiled encode with its tile size and overlap. Tiled
+encode trades speed for lower peak VRAM on large guides. These values are stored in the
+timeline's `ic_settings` and are read by the sampler at encode time.
 
 ## Before running
 
@@ -56,8 +68,8 @@ sampler or conditioning graphs.
 ## Kept and removed graph parts
 
 Kept: the bus-driven empty video/audio latent shells, both guider/sampler stages,
-spatial upscale, tiled VAE decode, audio decode, video output, and the selected
-external-reference preprocessing and identity-anchor path.
+spatial upscale, tiled VAE decode, audio decode, video output, and `LTXVPreprocess` on
+the conditioning-image path.
 
 Removed: the standard Director, Looping Bridge, MultiPromptProvider and prompt
 assembly nodes, late-reference loaders/batches, `LTXVLoopingReferenceSchedule`,

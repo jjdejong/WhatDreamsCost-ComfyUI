@@ -2,46 +2,8 @@
   "id": "3bb7ecb2-6623-47a4-9b86-69d5220b9180",
   "revision": 0,
   "last_node_id": 302,
-  "last_link_id": 166,
+  "last_link_id": 165,
   "nodes": [
-    {
-      "id": 2,
-      "type": "LTXVPreprocess",
-      "pos": [
-        2100,
-        700
-      ],
-      "size": [
-        300,
-        200
-      ],
-      "flags": {},
-      "order": 2,
-      "mode": 0,
-      "inputs": [
-        {
-          "name": "image",
-          "type": "IMAGE",
-          "link": 135
-        }
-      ],
-      "outputs": [
-        {
-          "name": "output_image",
-          "type": "IMAGE",
-          "links": [
-            136
-          ],
-          "slot_index": 0
-        }
-      ],
-      "properties": {
-        "Node name for S&R": "LTXVPreprocess"
-      },
-      "widgets_values": [
-        18
-      ]
-    },
     {
       "id": 10,
       "type": "CheckpointLoaderSimple",
@@ -76,8 +38,8 @@
           "name": "VAE",
           "type": "VAE",
           "links": [
-            143,
-            163
+            142,
+            162
           ],
           "slot_index": 2
         }
@@ -144,8 +106,8 @@
           "name": "Audio VAE",
           "type": "VAE",
           "links": [
-            144,
-            165
+            143,
+            164
           ],
           "slot_index": 0
         }
@@ -183,9 +145,9 @@
           "name": "MODEL",
           "type": "MODEL",
           "links": [
-            142,
-            156,
-            159
+            141,
+            155,
+            158
           ],
           "slot_index": 0
         }
@@ -219,7 +181,7 @@
           "name": "LATENT_UPSCALE_MODEL",
           "type": "LATENT_UPSCALE_MODEL",
           "links": [
-            145
+            144
           ],
           "slot_index": 0
         }
@@ -258,8 +220,8 @@
           "type": "CONDITIONING",
           "links": [
             30,
-            158,
-            161
+            157,
+            160
           ],
           "slot_index": 0
         }
@@ -290,7 +252,7 @@
         {
           "name": "positive",
           "type": "CONDITIONING",
-          "link": 154
+          "link": 153
         },
         {
           "name": "negative",
@@ -300,7 +262,7 @@
         {
           "name": "frame_rate",
           "type": "FLOAT",
-          "link": 155
+          "link": 154
         }
       ],
       "outputs": [
@@ -308,8 +270,8 @@
           "name": "positive",
           "type": "CONDITIONING",
           "links": [
-            157,
-            160
+            156,
+            159
           ],
           "slot_index": 0
         },
@@ -345,7 +307,7 @@
         {
           "name": "width",
           "type": "INT",
-          "link": 138,
+          "link": 137,
           "widget": {
             "name": "width"
           }
@@ -353,7 +315,7 @@
         {
           "name": "height",
           "type": "INT",
-          "link": 139,
+          "link": 138,
           "widget": {
             "name": "height"
           }
@@ -361,7 +323,7 @@
         {
           "name": "length",
           "type": "INT",
-          "link": 140,
+          "link": 139,
           "widget": {
             "name": "length"
           }
@@ -372,7 +334,7 @@
           "name": "LATENT",
           "type": "LATENT",
           "links": [
-            141
+            140
           ],
           "slot_index": 0
         }
@@ -408,7 +370,7 @@
           "name": "NOISE",
           "type": "NOISE",
           "links": [
-            146
+            145
           ],
           "slot_index": 0
         }
@@ -442,7 +404,7 @@
           "name": "SAMPLER",
           "type": "SAMPLER",
           "links": [
-            147
+            146
           ],
           "slot_index": 0
         }
@@ -475,7 +437,7 @@
           "name": "SIGMAS",
           "type": "SIGMAS",
           "links": [
-            148
+            147
           ],
           "slot_index": 0
         }
@@ -506,17 +468,17 @@
         {
           "name": "model",
           "type": "MODEL",
-          "link": 156
+          "link": 155
         },
         {
           "name": "positive",
           "type": "CONDITIONING",
-          "link": 157
+          "link": 156
         },
         {
           "name": "negative",
           "type": "CONDITIONING",
-          "link": 158
+          "link": 157
         }
       ],
       "outputs": [
@@ -524,7 +486,7 @@
           "name": "GUIDER",
           "type": "GUIDER",
           "links": [
-            149
+            148
           ],
           "slot_index": 0
         }
@@ -559,7 +521,7 @@
           "name": "NOISE",
           "type": "NOISE",
           "links": [
-            150
+            149
           ],
           "slot_index": 0
         }
@@ -593,7 +555,7 @@
           "name": "SAMPLER",
           "type": "SAMPLER",
           "links": [
-            151
+            150
           ],
           "slot_index": 0
         }
@@ -626,7 +588,7 @@
           "name": "SIGMAS",
           "type": "SIGMAS",
           "links": [
-            152
+            151
           ],
           "slot_index": 0
         }
@@ -657,17 +619,17 @@
         {
           "name": "model",
           "type": "MODEL",
-          "link": 159
+          "link": 158
         },
         {
           "name": "positive",
           "type": "CONDITIONING",
-          "link": 160
+          "link": 159
         },
         {
           "name": "negative",
           "type": "CONDITIONING",
-          "link": 161
+          "link": 160
         }
       ],
       "outputs": [
@@ -675,7 +637,7 @@
           "name": "GUIDER",
           "type": "GUIDER",
           "links": [
-            153
+            152
           ],
           "slot_index": 0
         }
@@ -708,12 +670,12 @@
         {
           "name": "samples",
           "type": "LATENT",
-          "link": 162
+          "link": 161
         },
         {
           "name": "vae",
           "type": "VAE",
-          "link": 163
+          "link": 162
         }
       ],
       "outputs": [
@@ -758,12 +720,12 @@
         {
           "name": "samples",
           "type": "LATENT",
-          "link": 164
+          "link": 163
         },
         {
           "name": "audio_vae",
           "type": "VAE",
-          "link": 165
+          "link": 164
         }
       ],
       "outputs": [
@@ -809,7 +771,7 @@
         {
           "name": "fps",
           "type": "FLOAT",
-          "link": 166
+          "link": 165
         }
       ],
       "outputs": [
@@ -950,7 +912,7 @@
           "name": "positive",
           "type": "CONDITIONING",
           "links": [
-            154
+            153
           ],
           "slot_index": 0
         },
@@ -974,7 +936,7 @@
           "name": "cond_image_indices",
           "type": "STRING",
           "links": [
-            137
+            136
           ],
           "slot_index": 3
         },
@@ -994,7 +956,7 @@
           "name": "frame_count",
           "type": "INT",
           "links": [
-            140
+            139
           ],
           "slot_index": 6
         },
@@ -1002,8 +964,8 @@
           "name": "frame_rate",
           "type": "FLOAT",
           "links": [
-            155,
-            166
+            154,
+            165
           ],
           "slot_index": 7
         },
@@ -1023,7 +985,7 @@
           "name": "stage_1_width",
           "type": "INT",
           "links": [
-            138
+            137
           ],
           "slot_index": 10
         },
@@ -1031,7 +993,7 @@
           "name": "stage_1_height",
           "type": "INT",
           "links": [
-            139
+            138
           ],
           "slot_index": 11
         },
@@ -1052,30 +1014,30 @@
       ],
       "properties": {
         "Node name for S&R": "LTXLoopingDirector",
-        "timeline_data": "{\"version\":2,\"tile_prompts\":[\"The couple continues the choreography at a regular pace while the camera makes a slow orbit toward the next tile's end reference image.\",\"The couple continues the choreography at a regular pace while the camera makes a slow orbit toward the next tile's end reference image.\",\"The couple continues the choreography at a regular pace while the camera makes a slow orbit toward the next tile's end reference image.\",\"The couple continues the choreography at a regular pace while the camera makes a slow orbit toward the next tile's end reference image.\"],\"keyframes\":[{\"frame\":0,\"imageFile\":\"reference_image.png\"}],\"video_segments\":[],\"ic_segments\":[],\"audio_segments\":[],\"use_custom_audio\":false,\"inpaint_audio\":true,\"use_ic_video_audio\":false,\"retake_mode\":false,\"retake\":null,\"ic_settings\":{}}",
-        "looping_director_timeline": "{\"version\":2,\"tile_prompts\":[\"The couple continues the choreography at a regular pace while the camera makes a slow orbit toward the next tile's end reference image.\",\"The couple continues the choreography at a regular pace while the camera makes a slow orbit toward the next tile's end reference image.\",\"The couple continues the choreography at a regular pace while the camera makes a slow orbit toward the next tile's end reference image.\",\"The couple continues the choreography at a regular pace while the camera makes a slow orbit toward the next tile's end reference image.\"],\"keyframes\":[{\"frame\":0,\"imageFile\":\"reference_image.png\"}],\"video_segments\":[],\"ic_segments\":[],\"audio_segments\":[],\"use_custom_audio\":false,\"inpaint_audio\":true,\"use_ic_video_audio\":false,\"retake_mode\":false,\"retake\":null,\"ic_settings\":{}}",
-        "looping_director_settings": {
-          "global_prompt": "A cinematic live-action continuous shot with consistent subject identity, wardrobe, lighting, and environment. The action continues naturally across the shot without a reset or cut. Diegetic audio remains coherent with the action.",
+        "timeline_data": "{\"version\":2,\"tile_prompts\":[\"The couple continues the dance as the woman lowers her raised leg into a controlled step and the man guides her through a slow turn. The camera makes a gentle orbit from the frontal view toward a left three-quarter view, ending near the first later reference image. Their footfalls remain synchronized and unhurried.\",\"Without a cut, the couple flows into the next phrase: the woman extends one arm and steps backward while the man follows with a measured pivot. The camera tracks sideways and eases into a right three-quarter view, ending near the second later reference image. Small pauses and natural eye contact preserve the continuous performance.\",\"The choreography continues seamlessly as the couple completes the turn and settles into another linked step. The camera slowly pushes in while drifting to a balanced front-right view, then holds on their relaxed faces, subtle micro-expressions, and steady breathing through the final frames.\"],\"keyframes\":[{\"frame\":0,\"imageFile\":\"example.png\"},{\"frame\":264,\"imageFile\":\"example.png\"},{\"frame\":504,\"imageFile\":\"example.png\"}],\"video_segments\":[],\"ic_segments\":[],\"audio_segments\":[],\"use_custom_audio\":false,\"inpaint_audio\":true,\"use_ic_video_audio\":false,\"retake_mode\":false,\"retake\":null,\"ic_settings\":{}}",
+        "looping_director_timeline": "{\"version\":2,\"tile_prompts\":[\"The couple continues the dance as the woman lowers her raised leg into a controlled step and the man guides her through a slow turn. The camera makes a gentle orbit from the frontal view toward a left three-quarter view, ending near the first later reference image. Their footfalls remain synchronized and unhurried.\",\"Without a cut, the couple flows into the next phrase: the woman extends one arm and steps backward while the man follows with a measured pivot. The camera tracks sideways and eases into a right three-quarter view, ending near the second later reference image. Small pauses and natural eye contact preserve the continuous performance.\",\"The choreography continues seamlessly as the couple completes the turn and settles into another linked step. The camera slowly pushes in while drifting to a balanced front-right view, then holds on their relaxed faces, subtle micro-expressions, and steady breathing through the final frames.\"],\"keyframes\":[{\"frame\":0,\"imageFile\":\"example.png\"},{\"frame\":264,\"imageFile\":\"example.png\"},{\"frame\":504,\"imageFile\":\"example.png\"}],\"video_segments\":[],\"ic_segments\":[],\"audio_segments\":[],\"use_custom_audio\":false,\"inpaint_audio\":true,\"use_ic_video_audio\":false,\"retake_mode\":false,\"retake\":null,\"ic_settings\":{}}",
+       "looping_director_settings": {
+          "global_prompt": "Continuous cinematic live-action shot of the same adult couple dancing in a warmly lit rehearsal studio, with consistent identity, wardrobe, lighting, and environment across the entire clip. The action proceeds at a natural regular pace without a cut or reset. A medium-wide composition shows the wooden floor, soft window light, subtle film grain, and realistic body movement. Diegetic audio only: measured footsteps, fabric movement, gentle body contact, and quiet exerted breathing; no music, no dialogue.",
           "frame_rate": 24.0,
           "total_duration": 30.0,
-          "tile_duration": 10.0,
-          "overlap_duration": 3.3333333333333335,
+          "tile_duration": 12.0,
+          "overlap_duration": 2.0,
           "target_height": 1088,
           "reference_keyframe_index": 0
         },
         "has_serialized_properties": true
       },
-      "widgets_values": [
-        "A cinematic live-action continuous shot with consistent subject identity, wardrobe, lighting, and environment. The action continues naturally across the shot without a reset or cut. Diegetic audio remains coherent with the action.",
+     "widgets_values": [
+        "Continuous cinematic live-action shot of the same adult couple dancing in a warmly lit rehearsal studio, with consistent identity, wardrobe, lighting, and environment across the entire clip. The action proceeds at a natural regular pace without a cut or reset. A medium-wide composition shows the wooden floor, soft window light, subtle film grain, and realistic body movement. Diegetic audio only: measured footsteps, fabric movement, gentle body contact, and quiet exerted breathing; no music, no dialogue.",
         24.0,
         30.0,
-        10.0,
-        3.3333333333333335,
-        "{\"version\":2,\"tile_prompts\":[\"The couple continues the choreography at a regular pace while the camera makes a slow orbit toward the next tile's end reference image.\",\"The couple continues the choreography at a regular pace while the camera makes a slow orbit toward the next tile's end reference image.\",\"The couple continues the choreography at a regular pace while the camera makes a slow orbit toward the next tile's end reference image.\",\"The couple continues the choreography at a regular pace while the camera makes a slow orbit toward the next tile's end reference image.\"],\"keyframes\":[{\"frame\":0,\"imageFile\":\"reference_image.png\"}],\"video_segments\":[],\"ic_segments\":[],\"audio_segments\":[],\"use_custom_audio\":false,\"inpaint_audio\":true,\"use_ic_video_audio\":false,\"retake_mode\":false,\"retake\":null,\"ic_settings\":{}}",
+        12.0,
+        2.0,
+        "{\"version\":2,\"tile_prompts\":[\"The couple continues the dance as the woman lowers her raised leg into a controlled step and the man guides her through a slow turn. The camera makes a gentle orbit from the frontal view toward a left three-quarter view, ending near the first later reference image. Their footfalls remain synchronized and unhurried.\",\"Without a cut, the couple flows into the next phrase: the woman extends one arm and steps backward while the man follows with a measured pivot. The camera tracks sideways and eases into a right three-quarter view, ending near the second later reference image. Small pauses and natural eye contact preserve the continuous performance.\",\"The choreography continues seamlessly as the couple completes the turn and settles into another linked step. The camera slowly pushes in while drifting to a balanced front-right view, then holds on their relaxed faces, subtle micro-expressions, and steady breathing through the final frames.\"],\"keyframes\":[{\"frame\":0,\"imageFile\":\"example.png\"},{\"frame\":264,\"imageFile\":\"example.png\"},{\"frame\":504,\"imageFile\":\"example.png\"}],\"video_segments\":[],\"ic_segments\":[],\"audio_segments\":[],\"use_custom_audio\":false,\"inpaint_audio\":true,\"use_ic_video_audio\":false,\"retake_mode\":false,\"retake\":null,\"ic_settings\":{}}",
         1088,
         0
       ],
-      "title": "LTX Looping Director"
+      "title": "LTX Looping Director — Basic 30s / 3 tiles"
     },
     {
       "id": 301,
@@ -1105,72 +1067,72 @@
         {
           "name": "cond_images",
           "type": "IMAGE",
-          "link": 136
+          "link": 135
         },
         {
           "name": "cond_image_indices",
           "type": "STRING",
-          "link": 137
+          "link": 136
         },
         {
           "name": "model",
           "type": "MODEL",
-          "link": 142
+          "link": 141
         },
         {
           "name": "video_vae",
           "type": "VAE",
-          "link": 143
+          "link": 142
         },
         {
           "name": "audio_vae",
           "type": "VAE",
-          "link": 144
+          "link": 143
         },
         {
           "name": "latent_upscale_model",
           "type": "LATENT_UPSCALE_MODEL",
-          "link": 145
+          "link": 144
         },
         {
           "name": "pass1_noise",
           "type": "NOISE",
-          "link": 146
+          "link": 145
         },
         {
           "name": "pass1_sampler",
           "type": "SAMPLER",
-          "link": 147
+          "link": 146
         },
         {
           "name": "pass1_sigmas",
           "type": "SIGMAS",
-          "link": 148
+          "link": 147
         },
         {
           "name": "pass1_guider",
           "type": "GUIDER",
-          "link": 149
+          "link": 148
         },
         {
           "name": "pass2_noise",
           "type": "NOISE",
-          "link": 150
+          "link": 149
         },
         {
           "name": "pass2_sampler",
           "type": "SAMPLER",
-          "link": 151
+          "link": 150
         },
         {
           "name": "pass2_sigmas",
           "type": "SIGMAS",
-          "link": 152
+          "link": 151
         },
         {
           "name": "pass2_guider",
           "type": "GUIDER",
-          "link": 153
+          "link": 152
         },
         {
           "name": "pass_count",
@@ -1413,7 +1375,7 @@
         {
           "name": "pass1_latent",
           "type": "LATENT",
-          "link": 141
+          "link": 140
         },
         {
           "name": "pass2_latent",
@@ -1466,7 +1428,7 @@
           "name": "video_latent",
           "type": "LATENT",
           "links": [
-            162
+            161
           ],
           "slot_index": 1
         },
@@ -1474,7 +1436,7 @@
           "name": "audio_latent",
           "type": "LATENT",
           "links": [
-            164
+            163
           ],
           "slot_index": 2
         }
@@ -1515,7 +1477,7 @@
         "off",
         "ltx_looping_director"
       ],
-      "title": "LTX Looping Director \u2014 1/2 Pass"
+      "title": "LTX Looping Director Sampler — Basic 30s / 3 tiles"
     },
     {
       "id": 302,
@@ -1533,13 +1495,10 @@
       "mode": 0,
       "inputs": [],
       "outputs": [],
-      "properties": {
-        "Node name for S&R": "MarkdownNote"
-      },
+      "properties": {},
       "widgets_values": [
-        "# LTX-2.3 Looping Director\n\n**Director:** schedules one prompt per tile, places keyframes in the overlap, and derives the target width from the start-image aspect ratio.\n\n**Combined sampler:** runs one or two looping passes, optionally resumes saved tile/pass latents, and outputs concatenated AV, video-only, and audio-only latents. VAE decoding stays outside the sampler.\n\n**This example:** 24 fps, 30 seconds total, 10.00-second tiles, and 3.33-second overlap produce 4 tiles, so the Director carries 4 tile prompts. Keyframes after frame 0 sit inside the preceding tile's overlap.\n\n**Start image:** the Director's conditioning images pass through `LTXV Preprocess` before the sampler, matching the source workflow's compression preprocessing. A text-to-video variant with no keyframes should bypass that node.\n\n**Prompting:** keep the global prompt stable and describe shared identity, setting, lighting, style, and audio there. Each tile prompt should be one present-tense paragraph describing only the next physical action and camera transition. State concrete camera endpoints and continuity cues; avoid contradictions, cuts, resets, or abstract emotion labels."
+        "# LTX-2.3 Looping Director\\n\\n**Director:** schedules one prompt per tile, places keyframes in the overlap, and derives the target width from the start-image aspect ratio.\\n\\n**Combined sampler:** runs one or two looping passes, optionally resumes saved tile/pass latents, and outputs concatenated AV, video-only, and audio-only latents. VAE decoding stays outside the sampler.\\n\\n**Example:** 24 fps, 30 seconds total, 12-second tiles, and 2-second overlap produce three tiles. The later keyframes at 11 and 21 seconds sit inside the preceding tile overlaps.\\n\\n**Prompting:** keep the global prompt stable and describe shared identity, setting, lighting, style, and audio there. Each tile prompt should be one present-tense paragraph describing only the next physical action and camera transition. State concrete camera endpoints and continuity cues; avoid contradictions, cuts, resets, or abstract emotion labels."
       ],
-      "title": "",
       "color": "#432",
       "bgcolor": "#653"
     }
@@ -1621,20 +1580,12 @@
       135,
       300,
       2,
-      2,
-      0,
-      "IMAGE"
-    ],
-    [
-      136,
-      2,
-      0,
       301,
       2,
       "IMAGE"
     ],
     [
-      137,
+      136,
       300,
       3,
       301,
@@ -1642,7 +1593,7 @@
       "STRING"
     ],
     [
-      138,
+      137,
       300,
       10,
       30,
@@ -1650,7 +1601,7 @@
       "INT"
     ],
     [
-      139,
+      138,
       300,
       11,
       30,
@@ -1658,7 +1609,7 @@
       "INT"
     ],
     [
-      140,
+      139,
       300,
       6,
       30,
@@ -1666,15 +1617,15 @@
       "INT"
     ],
     [
-      141,
+      140,
       30,
       0,
       301,
-      48,
+      35,
       "LATENT"
     ],
     [
-      142,
+      141,
       13,
       0,
       301,
@@ -1682,7 +1633,7 @@
       "MODEL"
     ],
     [
-      143,
+      142,
       10,
       2,
       301,
@@ -1690,7 +1641,7 @@
       "VAE"
     ],
     [
-      144,
+      143,
       12,
       0,
       301,
@@ -1698,7 +1649,7 @@
       "VAE"
     ],
     [
-      145,
+      144,
       14,
       0,
       301,
@@ -1706,7 +1657,7 @@
       "LATENT_UPSCALE_MODEL"
     ],
     [
-      146,
+      145,
       40,
       0,
       301,
@@ -1714,7 +1665,7 @@
       "NOISE"
     ],
     [
-      147,
+      146,
       41,
       0,
       301,
@@ -1722,7 +1673,7 @@
       "SAMPLER"
     ],
     [
-      148,
+      147,
       42,
       0,
       301,
@@ -1730,7 +1681,7 @@
       "SIGMAS"
     ],
     [
-      149,
+      148,
       43,
       0,
       301,
@@ -1738,7 +1689,7 @@
       "GUIDER"
     ],
     [
-      150,
+      149,
       60,
       0,
       301,
@@ -1746,7 +1697,7 @@
       "NOISE"
     ],
     [
-      151,
+      150,
       61,
       0,
       301,
@@ -1754,7 +1705,7 @@
       "SAMPLER"
     ],
     [
-      152,
+      151,
       62,
       0,
       301,
@@ -1762,7 +1713,7 @@
       "SIGMAS"
     ],
     [
-      153,
+      152,
       63,
       0,
       301,
@@ -1770,7 +1721,7 @@
       "GUIDER"
     ],
     [
-      154,
+      153,
       300,
       0,
       22,
@@ -1778,7 +1729,7 @@
       "CONDITIONING"
     ],
     [
-      155,
+      154,
       300,
       7,
       22,
@@ -1786,7 +1737,7 @@
       "FLOAT"
     ],
     [
-      156,
+      155,
       13,
       0,
       43,
@@ -1794,23 +1745,23 @@
       "MODEL"
     ],
     [
-      157,
+      156,
       22,
       0,
       43,
       1,
+      "CONDITIONING"
+    ],
+    [
+      157,
+      21,
+      0,
+      43,
+      2,
       "CONDITIONING"
     ],
     [
       158,
-      21,
-      0,
-      43,
-      2,
-      "CONDITIONING"
-    ],
-    [
-      159,
       13,
       0,
       63,
@@ -1818,7 +1769,7 @@
       "MODEL"
     ],
     [
-      160,
+      159,
       22,
       0,
       63,
@@ -1826,7 +1777,7 @@
       "CONDITIONING"
     ],
     [
-      161,
+      160,
       21,
       0,
       63,
@@ -1834,7 +1785,7 @@
       "CONDITIONING"
     ],
     [
-      162,
+      161,
       301,
       1,
       71,
@@ -1842,7 +1793,7 @@
       "LATENT"
     ],
     [
-      163,
+      162,
       10,
       2,
       71,
@@ -1850,7 +1801,7 @@
       "VAE"
     ],
     [
-      164,
+      163,
       301,
       2,
       72,
@@ -1858,7 +1809,7 @@
       "LATENT"
     ],
     [
-      165,
+      164,
       12,
       0,
       72,
@@ -1866,7 +1817,7 @@
       "VAE"
     ],
     [
-      166,
+      165,
       300,
       7,
       73,
@@ -1885,8 +1836,8 @@
       ]
     },
     "info": {
-      "name": "LTX-2.3 Looping Director",
-      "description": "Two-pass AV looping driven by a tile-owned LTX Looping Director plan."
+      "name": "LTX-2.3 Basic Looping Director",
+      "description": "Basic 30-second, three-tile AV looping workflow using the Director and combined sampler nodes."
     }
   },
   "version": 0.4
