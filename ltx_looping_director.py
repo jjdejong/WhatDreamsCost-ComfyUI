@@ -13,7 +13,15 @@ from PIL import Image, ImageOps
 
 from comfy_api.latest import io
 
+from .ltx_looping_media import (
+    first_video_frame,
+    media_fingerprint,
+    validate_media_timeline,
+)
+
 log = logging.getLogger(__name__)
+
+LoopingDirectorPlan = io.Custom("LTX_LOOPING_DIRECTOR_PLAN")
 
 LTX_TIME_SCALE = 8
 DEFAULT_FRAME_RATE = 24.0
@@ -21,6 +29,10 @@ DEFAULT_TOTAL_DURATION = 48.0
 DEFAULT_TILE_DURATION = 10.0
 DEFAULT_OVERLAP_DURATION = 2.0
 DEFAULT_TARGET_HEIGHT = 1088
+DEFAULT_TILE_PROMPT = (
+    "The couple continues the choreography at a regular pace while the camera makes "
+    "a slow orbit toward the next tile's end reference image."
+)
 
 
 def _parse_timeline(timeline_data):
@@ -37,6 +49,9 @@ def _parse_timeline(timeline_data):
     if not isinstance(data, dict):
         raise ValueError("LTXLoopingDirector: timeline_data must contain a JSON object")
 
+    legacy_retake_mode = bool(data.get("retakeMode"))
+    legacy_retake = data.get("retake") or data.get("retakeVideo")
+
     tile_prompts = data.get("tile_prompts", []) or []
     keyframes = data.get("keyframes", []) or []
     if not isinstance(tile_prompts, list):
@@ -47,6 +62,30 @@ def _parse_timeline(timeline_data):
     for index, prompt in enumerate(tile_prompts):
         if not isinstance(prompt, str):
             raise ValueError(f"LTXLoopingDirector: tile_prompts[{index}] must be a string")
+
+    # Version 1 had no media lanes. Keep old saved workflows executable while the
+    # editor upgrades them to version 2 on the next edit.
+    if int(data.get("version", 1) or 1) < 2:
+        data = {
+            **data,
+            "version": 2,
+            "video_segments": [],
+            "ic_segments": [],
+            "audio_segments": [],
+            "use_custom_audio": False,
+            "inpaint_audio": True,
+            "use_ic_video_audio": False,
+            "retake_mode": legacy_retake_mode,
+            "retake": legacy_retake,
+            "ic_settings": {},
+        }
+
+    if data.get("retakeMode") or data.get("retakeVideo"):
+        data = {
+            **data,
+            "retake_mode": bool(data.get("retakeMode")),
+            "retake": data.get("retake") or data.get("retakeVideo"),
+        }
 
     return data, tile_prompts, keyframes
 
@@ -273,8 +312,22 @@ class LTXLoopingDirector(io.ComfyNode):
                 ),
                 io.String.Input(
                     "timeline_data",
-                    default='{"version":1,"tile_prompts":["","","","","",""] ,"keyframes":[]}',
-                    tooltip="Frontend-managed tile prompts and image keyframes.",
+                    default=json.dumps({
+                        "version": 2,
+                        "tile_prompts": [DEFAULT_TILE_PROMPT] * 6,
+                        "keyframes": [],
+                        "video_segments": [],
+                        "ic_segments": [],
+                        "audio_segments": [],
+                        "use_custom_audio": False,
+                        "inpaint_audio": True,
+                        "use_ic_video_audio": False,
+                        "retake_mode": False,
+                        "retake": None,
+                        "ic_settings": {},
+                    }),
+                    optional=True,
+                    tooltip="Frontend-managed prompts, keyframes, and optional media.",
                 ),
                 io.Int.Input(
                     "target_height",
@@ -316,7 +369,11 @@ class LTXLoopingDirector(io.ComfyNode):
                 io.Int.Output(display_name="stage_1_height"),
                 io.Image.Output(
                     display_name="reference_image",
-                    tooltip="Deprecated alias of start_image, retained for existing workflows.",
+                    tooltip="Image selected by reference_keyframe_index for external use.",
+                ),
+                LoopingDirectorPlan.Output(
+                    display_name="director_plan",
+                    tooltip="Execution plan consumed by LTX Looping Director Sampler.",
                 ),
             ],
         )
@@ -338,6 +395,7 @@ class LTXLoopingDirector(io.ComfyNode):
         parsed = _parse_keyframes(keyframes, frame_count)
         if parsed and parsed[0][0] != 0:
             raise ValueError("LTXLoopingDirector: the first keyframe must be at frame 0")
+        validate_media_timeline(data, frame_count, chunks)
         return data, tile_prompts, keyframes, chunks, frame_count, tile_size, overlap
 
     @classmethod
@@ -400,6 +458,11 @@ class LTXLoopingDirector(io.ComfyNode):
                         digest.update(block)
             except (OSError, TypeError, ValueError):
                 digest.update(b"<missing>")
+        try:
+            for entry in media_fingerprint(_parse_timeline(timeline_data)[0]):
+                digest.update(repr(entry).encode("utf-8"))
+        except (OSError, TypeError, ValueError):
+            digest.update(b"<missing-media>")
         return digest.hexdigest()
 
     @staticmethod
@@ -500,7 +563,7 @@ class LTXLoopingDirector(io.ComfyNode):
         reference_keyframe_index=0,
     ):
         (
-            _,
+            data,
             tile_prompts,
             keyframes,
             chunks,
@@ -537,6 +600,57 @@ class LTXLoopingDirector(io.ComfyNode):
             int(target_height or DEFAULT_TARGET_HEIGHT),
             int(reference_keyframe_index or 0),
         )
+
+        if start_image is None:
+            aspect_segment = next(
+                iter(
+                    (data.get("video_segments", []) or [])
+                    + (data.get("ic_segments", []) or [])
+                    + ([data.get("retake")] if data.get("retake_mode") and data.get("retake") else [])
+                ),
+                None,
+            )
+            if aspect_segment is not None:
+                filename = (
+                    aspect_segment.get("imageFile")
+                    or aspect_segment.get("videoFile")
+                    or aspect_segment.get("fileName")
+                )
+                media_start = first_video_frame(filename)
+                source_height, source_width = media_start.shape[1:3]
+                final_height = _aligned_dimension(target_height or DEFAULT_TARGET_HEIGHT, 64, 64)
+                final_width = _aligned_dimension(
+                    final_height * source_width / source_height,
+                    64,
+                    64,
+                )
+                start_image = media_start
+                stage_1_width = final_width // 2
+                stage_1_height = final_height // 2
+                reference_image = _resize_reference(media_start, final_width, final_height)
+            else:
+                final_height = _aligned_dimension(target_height or DEFAULT_TARGET_HEIGHT, 64, 64)
+                final_width = _aligned_dimension(final_height * 16 / 9, 64, 64)
+                stage_1_width = final_width // 2
+                stage_1_height = final_height // 2
+
+        plan = {
+            "version": 1,
+            "frame_rate": float(frame_rate),
+            "frame_count": frame_count,
+            "temporal_tile_size": temporal_tile_size,
+            "temporal_overlap": temporal_overlap,
+            "chunks": [
+                {"tile": index, "start": start, "end": end}
+                for index, (start, end) in enumerate(chunks)
+            ],
+            "stage_1_width": stage_1_width,
+            "stage_1_height": stage_1_height,
+            "target_width": stage_1_width * 2 if stage_1_width else 0,
+            "target_height": stage_1_height * 2 if stage_1_height else 0,
+            "media": data,
+            "reference_keyframe_index": int(reference_keyframe_index or 0),
+        }
         log.info(
             "[LTXLoopingDirector] %d tile conditionings, %d keyframes, frame_count=%d",
             len(conditionings),
@@ -557,6 +671,7 @@ class LTXLoopingDirector(io.ComfyNode):
             stage_1_width,
             stage_1_height,
             reference_image,
+            plan,
         )
 
 
