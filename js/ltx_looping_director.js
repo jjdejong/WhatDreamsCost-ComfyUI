@@ -2,6 +2,13 @@ const { app } = window.comfyAPI.app;
 const { api } = window.comfyAPI.api;
 
 const TIME_SCALE = 8;
+// Timeline geometry, matching ltx_director.js so both editors read the same.
+const RULER_HEIGHT = 24;
+const BLOCK_HEIGHT = 160;
+const IC_TRACK_HEIGHT = 80;
+const AUDIO_TRACK_HEIGHT = 80;
+const SIDEBAR_WIDTH = 120;
+const CANVAS_HEIGHT = RULER_HEIGHT + BLOCK_HEIGHT + IC_TRACK_HEIGHT + AUDIO_TRACK_HEIGHT;
 const DEFAULT_FRAME_RATE = 24;
 const DEFAULT_TOTAL_DURATION = 48;
 const DEFAULT_TILE_DURATION = 10;
@@ -30,6 +37,13 @@ const ICONS = {
   trash: `<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"></polyline><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path></svg>`,
   retake: `<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21.5 2v6h-6M21.34 15.57a10 10 0 1 1-.57-8.38l5.67-5.67"/></svg>`,
   plus: `<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19"></line><line x1="5" y1="12" x2="19" y2="12"></line></svg>`,
+  minus: `<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="5" y1="12" x2="19" y2="12"></line></svg>`,
+  fit: `<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="3" y1="12" x2="21" y2="12"></line><polyline points="8 7 3 12 8 17"></polyline><polyline points="16 7 21 12 16 17"></polyline></svg>`,
+  play: `<svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="5 3 19 12 5 21 5 3"></polygon></svg>`,
+  pause: `<svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="6" y="4" width="4" height="16"></rect><rect x="14" y="4" width="4" height="16"></rect></svg>`,
+  loop: `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12A9 9 0 0 0 6 5.3L3 8"></path><polyline points="3 3 3 8 8 8"></polyline><path d="M3 12a9 9 0 0 0 15 6.7l3-2.7"></path><polyline points="21 21 21 16 16 16"></polyline></svg>`,
+  speakerOn: `<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"></polygon><path d="M19.07 4.93a10 10 0 0 1 0 14.14"></path><path d="M15.54 8.46a5 5 0 0 1 0 7.07"></path></svg>`,
+  speakerOff: `<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"></polygon><line x1="1" y1="1" x2="23" y2="23"></line></svg>`,
 };
 
 function hideWidget(widget) {
@@ -225,71 +239,74 @@ class LoopingDirectorEditor {
   }
 
   _build() {
+    this.zoom = 1;
+    this.selection = null;
+    this.thumbnails = new Map();
     this.container.className = "pr-wrapper ld-editor";
     this.container.innerHTML = `
       <style>
-        /* Layout and looping-specific chrome. Buttons, prompt panels and readouts
-           reuse the Director's own pr- classes so both editors look the same. */
-        .ld-editor { font-size: 12px; color: #e0e0e0; padding-bottom: 4px; }
-        .ld-section-label { color: #666; margin: 6px 0 4px; font-size: 9px; font-weight: bold; text-transform: uppercase; letter-spacing: .5px; user-select: none; }
+        /* Only looping-specific chrome lives here. The toolbar, controls group,
+           prompt panels and readouts reuse the Director's own pr- classes, which
+           ltx_director.js injects globally, so both editors are one visual system. */
+        .ld-editor { font-size: 12px; color: #e0e0e0; }
+        .ld-timeline-layout { display: flex; flex-direction: row; width: 100%; border: 1px solid #111; border-radius: 6px; overflow: hidden; }
+        .ld-sidebar { width: ${SIDEBAR_WIDTH}px; flex-shrink: 0; display: flex; flex-direction: column; border-right: 1px solid #111; box-sizing: border-box; background: #1e1e1e; user-select: none; }
+        .ld-ruler-spacer { height: ${RULER_HEIGHT}px; width: 100%; border-bottom: 1px solid #111; background: #1e1e1e; box-sizing: border-box; flex-shrink: 0; }
+        .ld-track-label { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 4px; border-bottom: 1px solid #111; background: #1e1e1e; box-sizing: border-box; overflow: hidden; flex-shrink: 0; }
+        .ld-track-head { display: flex; align-items: center; justify-content: center; gap: 6px; }
+        .ld-track-head span { color: #ccc; font-size: 12px; font-weight: bold; line-height: 1; }
+        .ld-track-eye { cursor: pointer; display: inline-flex; align-items: center; justify-content: center; width: 14px; height: 14px; }
+        .ld-track-badge { font-size: 9px; font-weight: 600; padding: 2px 6px; border-radius: 4px; background: #222; border: 1px solid #111; color: #777; cursor: pointer; transition: all .2s ease; }
+        .ld-track-badge.on { background: #1c222d; border-color: #283142; color: #e0e0e0; }
+        .ld-viewport { flex-grow: 1; min-width: 0; overflow-x: auto; overflow-y: hidden; background: #2a2a2a; transition: background .2s ease; }
+        .ld-viewport.dragover { background: #333; box-shadow: inset 0 0 0 2px #888; }
+        .ld-canvas { display: block; background: #2a2a2a; cursor: pointer; outline: none; }
         .ld-status { color: #aaa; font-size: 11px; }
         .ld-warning { color: #e6b35a; }
-        .ld-keyframe-strip { height: 94px; position: relative; overflow: hidden; border: 1px solid #111; border-radius: 6px; background: #2a2a2a; cursor: crosshair; transition: border-color .2s ease; }
-        .ld-keyframe-strip.dragover { border-color: #888; background: rgba(255,255,255,.05); }
-        .ld-tile-band { position: absolute; top: 0; bottom: 0; border-right: 1px solid rgba(255,255,255,.10); background: rgba(255,255,255,.02); pointer-events: none; }
-        .ld-tile-band:nth-child(even) { background: rgba(255,255,255,.05); }
-        .ld-frame-marker { position: absolute; top: 4px; width: 92px; height: 76px; transform: translateX(-50%); background: #222; border: 1px solid #111; border-radius: 6px; padding: 3px; box-sizing: border-box; cursor: grab; z-index: 3; transition: border-color .2s ease, background .2s ease; }
-        .ld-frame-marker:hover { background: #333; border-color: #555; }
-        .ld-frame-marker.reference { border-color: #d7ad63; }
-        .ld-frame-marker.auto { border-color: #3a4a3e; }
-        .ld-frame-marker.selected { border-color: #888; box-shadow: 0 0 0 1px #555; }
-        .ld-frame-marker.invalid { border-color: #cc4444; }
-        .ld-frame-marker img { display: block; width: 84px; height: 52px; object-fit: contain; background: #181818; border-radius: 3px; pointer-events: none; }
-        .ld-frame-marker span { display: block; text-align: center; color: #aaa; font-size: 10px; line-height: 15px; white-space: nowrap; overflow: hidden; }
-        .ld-frame-marker .ld-delete { position: absolute; right: -6px; top: -7px; width: 17px; height: 17px; padding: 0; line-height: 1; border-radius: 9px; border: 1px solid #111; background: #222; color: #e0e0e0; cursor: pointer; transition: all .2s ease; }
-        .ld-frame-marker .ld-delete:hover { background: #4a1515; border-color: #cc4444; color: #ffaaaa; }
-        /* An empty slot is a placeholder only: it holds a position for a tile but is
-           not a keyframe until an image is dropped on it. */
-        .ld-frame-marker.empty { border-style: dashed; border-color: #444; background: #1e1e1e; cursor: pointer; }
-        .ld-frame-marker.empty:hover { border-color: #888; background: #262626; }
-        .ld-frame-marker.empty .ld-slot-drop { display: flex; align-items: center; justify-content: center; width: 84px; height: 52px; border-radius: 3px; background: #181818; color: #555; pointer-events: none; }
-        .ld-frame-marker.empty.dragover { border-color: #888; border-style: solid; background: rgba(255,255,255,.06); }
-        .retake-locked .ld-frame-marker { cursor: default; opacity: .55; }
-        .ld-prompts { display: grid; grid-template-columns: repeat(auto-fill, minmax(210px, 1fr)); gap: 6px; padding-bottom: 2px; }
-        .ld-prompt-cell { height: 118px; }
-        .ld-media { display: grid; gap: 6px; margin-bottom: 2px; }
-        .ld-media-lane { border: 1px solid #333; border-radius: 6px; background: #1e1e1e; padding: 6px 10px; transition: border-color .2s ease, background .2s ease; }
-        .ld-media-lane.dragover { border-color: #888; background: rgba(255,255,255,.05); }
-        .ld-media-head { display: flex; align-items: center; gap: 8px; color: #fff; font-size: 11px; font-weight: 600; }
-        .ld-media-head .pr-btn { margin-left: auto; padding: 3px 9px; }
-        .ld-media-items { display: grid; gap: 4px; margin-top: 6px; }
-        .ld-media-item { display: grid; grid-template-columns: minmax(0, 1fr) 52px 52px 52px 52px 22px; gap: 6px; align-items: center; color: #aaa; font-size: 11px; }
-        .ld-media-item > span:first-child { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-        .ld-media-item input[type=number], .ld-media-item select { font-size: 11px; color: #fff; background: #222; border: 1px solid #444; border-radius: 4px; text-align: center; padding: 3px; box-sizing: border-box; width: 100%; }
-        .ld-media-item .ld-delete { padding: 1px 6px; background: #222; color: #e0e0e0; border: 1px solid #111; border-radius: 4px; cursor: pointer; transition: all .2s ease; }
-        .ld-media-item .ld-delete:hover { background: #4a1515; border-color: #cc4444; color: #ffaaaa; }
-        .ld-media-item label { display: flex; align-items: center; gap: 4px; white-space: nowrap; }
+        .ld-info-left { display: flex; align-items: center; gap: 12px; margin-right: auto; }
+        .ld-settings-row { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; width: 100%; box-sizing: border-box; }
+        .ld-settings-row label { display: flex; align-items: center; gap: 5px; white-space: nowrap; font-size: 11px; font-weight: 600; color: #888; }
+        .ld-settings-row select, .ld-settings-row input[type=number] { font-size: 11px; color: #fff; background: #222; border: 1px solid #444; border-radius: 4px; padding: 3px 5px; }
+        .ld-settings-row select { min-width: 92px; }
+        .ld-settings-row input[type=number] { width: 58px; text-align: center; }
+        .ld-tile-prop { min-height: 96px; }
+        .ld-global-prop { min-height: 76px; }
       </style>
       <div class="pr-toolbar">
         <div class="pr-actions"></div>
-        <div class="pr-right-group">
-          <span class="pr-segment-bounds"></span>
-          <span class="pr-timecode"></span>
-        </div>
+        <div class="pr-right-group"></div>
       </div>
-      <div class="ld-section-label">Keyframes — one slot per tile at frame 0 and each tile overlap. Drop an image on a slot, or leave it empty to use no keyframe there.</div>
-      <div class="ld-keyframe-strip"></div>
-      <div class="ld-media"></div>
-      <div class="ld-section-label">Prompts — one per looping tile</div>
-      <div class="ld-prompts"></div>
+      <div class="ld-timeline-layout">
+        <div class="ld-sidebar"></div>
+        <div class="ld-viewport"><canvas class="ld-canvas" tabindex="0"></canvas></div>
+      </div>
+      <div class="pr-controls-group">
+        <div class="pr-strength-row"></div>
+        <div class="pr-player-controls"></div>
+        <div class="ld-settings-row"></div>
+      </div>
+      <div class="pr-prop-container ld-tile-prop"></div>
+      <div class="pr-prop-container ld-global-prop"></div>
     `;
     this.toolbar = this.container.querySelector(".pr-actions");
-    this.boundsDisplay = this.container.querySelector(".pr-segment-bounds");
-    this.timecodeDisplay = this.container.querySelector(".pr-timecode");
-    this.strip = this.container.querySelector(".ld-keyframe-strip");
-    this.media = this.container.querySelector(".ld-media");
-    this.prompts = this.container.querySelector(".ld-prompts");
+    this.toolbarRight = this.container.querySelector(".pr-right-group");
+    this.sidebar = this.container.querySelector(".ld-sidebar");
+    this.viewport = this.container.querySelector(".ld-viewport");
+    this.canvas = this.container.querySelector(".ld-canvas");
+    this.ctx = this.canvas.getContext("2d");
+    this.infoRow = this.container.querySelector(".pr-strength-row");
+    this.playerRow = this.container.querySelector(".pr-player-controls");
+    this.settingsRow = this.container.querySelector(".ld-settings-row");
+    this.tileProp = this.container.querySelector(".ld-tile-prop");
+    this.globalProp = this.container.querySelector(".ld-global-prop");
 
+    this._buildSidebar();
+    this._buildFileInputs();
+    this._buildPromptPanels();
+    this._bindCanvas();
+  }
+
+  _buildFileInputs() {
     const fileInput = document.createElement("input");
     fileInput.type = "file";
     fileInput.accept = "image/*";
@@ -316,26 +333,187 @@ class LoopingDirectorEditor {
       this.mediaInputs[kind] = input;
       this.container.appendChild(input);
     }
+  }
 
-    this.strip.addEventListener("click", event => {
-      if (event.target.closest(".ld-frame-marker")) return;
-      const rect = this.strip.getBoundingClientRect();
-      const ratio = Math.max(0, Math.min(1, (event.clientX - rect.left) / Math.max(1, rect.width)));
-      this.selectedFrame = snapFrame(ratio * (frameCount(this.node) - 1), frameCount(this.node));
-      this._renderToolbar();
+  // Track gutter: same shape as the Director's sidebar — a ruler spacer, then one
+  // label per track. Toggles are wired only where the Looping Director has a real
+  // setting behind them.
+  _buildSidebar() {
+    this.sidebar.innerHTML = "";
+    const spacer = document.createElement("div");
+    spacer.className = "ld-ruler-spacer";
+    this.sidebar.appendChild(spacer);
+
+    const makeLabel = (text, height) => {
+      const el = document.createElement("div");
+      el.className = "ld-track-label";
+      el.style.height = `${height}px`;
+      const head = document.createElement("div");
+      head.className = "ld-track-head";
+      const span = document.createElement("span");
+      span.textContent = text;
+      head.appendChild(span);
+      el.appendChild(head);
+      el._head = head;
+      this.sidebar.appendChild(el);
+      return el;
+    };
+
+    const makeBadge = (label, isOn, onToggle) => {
+      const badge = document.createElement("div");
+      badge.className = `ld-track-badge${isOn ? " on" : ""}`;
+      badge.textContent = label;
+      badge.addEventListener("click", event => {
+        event.stopPropagation();
+        onToggle();
+        this._commit();
+        this.refresh();
+      });
+      return badge;
+    };
+
+    this.mainLabel = makeLabel("MAIN", BLOCK_HEIGHT);
+    const tiles = tileCount(this.node);
+    this.mainLabel.appendChild(makeBadge(`${tiles} tile${tiles === 1 ? "" : "s"}`, false, () => {}));
+
+    this.icLabel = makeLabel("IC-LoRA Input", IC_TRACK_HEIGHT);
+    this.icLabel.appendChild(makeBadge(
+      `Audio: ${this.timeline.use_ic_video_audio ? "ON" : "OFF"}`,
+      Boolean(this.timeline.use_ic_video_audio),
+      () => { this.timeline.use_ic_video_audio = !this.timeline.use_ic_video_audio; },
+    ));
+
+    this.audioLabel = makeLabel("AUDIO", AUDIO_TRACK_HEIGHT);
+    const speaker = document.createElement("div");
+    speaker.className = "ld-track-eye";
+    const audioOn = this.timeline.use_custom_audio !== false;
+    speaker.style.color = audioOn ? "#aaa" : "#444";
+    speaker.innerHTML = audioOn ? ICONS.speakerOn : ICONS.speakerOff;
+    speaker.title = "Use the custom audio lane";
+    speaker.addEventListener("click", event => {
+      event.stopPropagation();
+      this.timeline.use_custom_audio = !audioOn;
+      this._commit();
+      this.refresh();
     });
-    this.strip.addEventListener("dragover", event => {
-      if (Array.from(event.dataTransfer?.items || []).some(item => item.kind === "file")) {
-        event.preventDefault();
-        this.strip.classList.add("dragover");
+    this.audioLabel._head.appendChild(speaker);
+    this.audioLabel.appendChild(makeBadge(
+      `Inpaint: ${this.timeline.inpaint_audio !== false ? "ON" : "OFF"}`,
+      this.timeline.inpaint_audio !== false,
+      () => { this.timeline.inpaint_audio = this.timeline.inpaint_audio === false; },
+    ));
+  }
+
+  _canvasWidth() {
+    const available = Math.max(240, this.viewport.clientWidth || 640);
+    return Math.round(available * this.zoom);
+  }
+
+  _frameToX(frame, width) {
+    const total = Math.max(1, frameCount(this.node) - 1);
+    return (Math.max(0, Math.min(total, frame)) / total) * width;
+  }
+
+  _xToFrame(x, width) {
+    const total = Math.max(1, frameCount(this.node) - 1);
+    return snapFrame((Math.max(0, Math.min(width, x)) / Math.max(1, width)) * total, frameCount(this.node));
+  }
+
+  _thumbnail(file) {
+    if (!file) return null;
+    const key = String(file);
+    if (this.thumbnails.has(key)) return this.thumbnails.get(key);
+    const parts = key.split("/");
+    const filename = parts.pop() || "";
+    const subfolder = parts.join("/");
+    const image = new Image();
+    image.onload = () => this._renderCanvas();
+    image.onerror = () => this.thumbnails.set(key, null);
+    image.src = api.apiURL(`/view?filename=${encodeURIComponent(filename)}&type=input&subfolder=${encodeURIComponent(subfolder)}`);
+    this.thumbnails.set(key, image);
+    return image;
+  }
+
+  _bindCanvas() {
+    this.canvas.addEventListener("pointerdown", event => {
+      const rect = this.canvas.getBoundingClientRect();
+      this._onCanvasPointer(event.clientX - rect.left, event.clientY - rect.top, event);
+    });
+    this.canvas.addEventListener("dblclick", event => {
+      const rect = this.canvas.getBoundingClientRect();
+      const hit = this._hitTest(event.clientX - rect.left, event.clientY - rect.top);
+      if (hit && hit.kind === "slot") {
+        this._pendingSlot = hit.slot;
+        this.fileInput.click();
       }
     });
-    this.strip.addEventListener("dragleave", () => this.strip.classList.remove("dragover"));
-    this.strip.addEventListener("drop", async event => {
-      event.preventDefault();
-      this.strip.classList.remove("dragover");
-      await this._uploadFiles(Array.from(event.dataTransfer?.files || []));
+    this.viewport.addEventListener("dragover", event => {
+      if (Array.from(event.dataTransfer?.items || []).some(item => item.kind === "file")) {
+        event.preventDefault();
+        this.viewport.classList.add("dragover");
+      }
     });
+    this.viewport.addEventListener("dragleave", () => this.viewport.classList.remove("dragover"));
+    this.viewport.addEventListener("drop", async event => {
+      event.preventDefault();
+      this.viewport.classList.remove("dragover");
+      const rect = this.canvas.getBoundingClientRect();
+      const hit = this._hitTest(event.clientX - rect.left, event.clientY - rect.top);
+      const files = Array.from(event.dataTransfer?.files || []);
+      if (hit && hit.kind === "slot") this._pendingSlot = hit.slot;
+      const images = files.filter(file => file.type.startsWith("image/"));
+      const videos = files.filter(file => file.type.startsWith("video/"));
+      const audio = files.filter(file => file.type.startsWith("audio/"));
+      // Drop target picks the lane, matching the Director's per-track drops.
+      if (hit && hit.track === "ic" && (videos.length || images.length)) {
+        await this._uploadMediaFiles([...videos, ...images], "ic");
+      } else if (hit && hit.track === "audio" && (audio.length || videos.length)) {
+        await this._uploadMediaFiles([...audio, ...videos], "audio");
+      } else {
+        if (images.length) await this._uploadFiles(images);
+        if (videos.length) await this._uploadMediaFiles(videos, "video");
+        if (audio.length) await this._uploadMediaFiles(audio, "audio");
+      }
+    });
+  }
+
+  _onCanvasPointer(x, y, event) {
+    const width = this.canvas.width / (window.devicePixelRatio || 1);
+    if (y <= RULER_HEIGHT) {
+      this.selectedFrame = this._xToFrame(x, width);
+      this._renderAll();
+      return;
+    }
+    const hit = this._hitTest(x, y);
+    this.selectedFrame = this._xToFrame(x, width);
+    if (hit && hit.kind === "slot") {
+      this.selection = null;
+      this.selectedKeyframe = null;
+      this.selectedTile = hit.tile;
+      if (event?.detail === 1) {
+        this._pendingSlot = hit.slot;
+        this.fileInput.click();
+      }
+    } else if (hit && hit.kind === "keyframe") {
+      this.selection = { kind: "keyframe", index: hit.index };
+      this.selectedKeyframe = hit.index;
+      this.selectedTile = hit.tile;
+    } else if (hit && hit.kind === "media") {
+      this.selection = { kind: hit.track, index: hit.index };
+      this.selectedKeyframe = null;
+      this.selectedTile = hit.tile;
+    } else {
+      this.selection = null;
+      this.selectedKeyframe = null;
+      if (hit) this.selectedTile = hit.tile;
+    }
+    this._renderAll();
+  }
+
+  _tileAtFrame(frame) {
+    const chunks = loopingSchedule(this.node).chunks;
+    const index = chunks.findIndex(chunk => frame >= chunk.startFrame && frame < chunk.endFrame);
+    return index < 0 ? Math.max(0, chunks.length - 1) : index;
   }
 
   _bindTimingWidgets() {
@@ -453,10 +631,6 @@ class LoopingDirectorEditor {
     const key = kind === "ic" ? "ic_segments" : `${kind}_segments`;
     if (!Array.isArray(this.timeline[key])) this.timeline[key] = [];
     return this.timeline[key];
-  }
-
-  _mediaLabel(kind) {
-    return kind === "ic" ? "IC Video" : kind === "video" ? "Video" : "Audio";
   }
 
   // Files up to CHUNK_SIZE go through ComfyUI's /upload/image; larger ones are split
@@ -616,292 +790,392 @@ class LoopingDirectorEditor {
     return String(segment.imageFile || segment.audioFile || "media").split("/").pop();
   }
 
-  _renderMedia() {
-    this.media.innerHTML = "";
-    for (const kind of ["video", "ic", "audio"]) {
-      const lane = document.createElement("div");
-      lane.className = "ld-media-lane";
-      const head = document.createElement("div");
-      head.className = "ld-media-head";
-      head.appendChild(document.createTextNode(
-        `${this._mediaLabel(kind)} — assign each item to a tile`,
-      ));
-      const addButton = makeButton("Add", `Add ${this._mediaLabel(kind)}`, () => this.mediaInputs[kind].click());
-      addButton.disabled = Boolean(this.timeline.retake_mode);
-      head.appendChild(addButton);
-      if (kind === "ic") {
-        const audioToggle = document.createElement("label");
-        audioToggle.className = "ld-status";
-        const checkbox = document.createElement("input");
-        checkbox.type = "checkbox";
-        checkbox.checked = Boolean(this.timeline.use_ic_video_audio);
-        checkbox.addEventListener("change", event => {
-          this.timeline.use_ic_video_audio = event.target.checked;
-          this._commit();
-          this.refresh();
-        });
-        audioToggle.appendChild(checkbox);
-        audioToggle.appendChild(document.createTextNode(" use IC Video audio"));
-        head.appendChild(audioToggle);
-      }
-      lane.appendChild(head);
-      const items = document.createElement("div");
-      items.className = "ld-media-items";
-      this._mediaSegments(kind).forEach((segment, index) => {
-        const row = document.createElement("div");
-        row.className = "ld-media-item";
-        const name = document.createElement("span");
-        name.textContent = this._mediaName(kind, segment);
-        name.title = String(segment.imageFile || segment.audioFile || this._mediaName(kind, segment));
-        row.appendChild(name);
-        const tileInput = document.createElement("input");
-        tileInput.type = "number";
-        tileInput.min = "0";
-        tileInput.max = String(Math.max(0, loopingSchedule(this.node).chunks.length - 1));
-        tileInput.step = "1";
-        tileInput.value = String(Number(segment.tile) || 0);
-        tileInput.title = `${this._mediaLabel(kind)} tile index`;
-        tileInput.addEventListener("change", event => {
-          segment.tile = Math.max(0, Math.min(loopingSchedule(this.node).chunks.length - 1, Math.round(Number(event.target.value) || 0)));
-          delete segment.start;
-          delete segment.length;
-          this._commit();
-          this.refresh();
-        });
-        row.appendChild(tileInput);
-        const trimInput = document.createElement("input");
-        trimInput.type = "number";
-        trimInput.min = "0";
-        trimInput.step = "1";
-        trimInput.value = String(Math.max(0, Math.round(Number(segment.trimStart) || 0)));
-        trimInput.title = "Source trim start (frames)";
-        trimInput.addEventListener("change", event => {
-          segment.trimStart = Math.max(0, Math.round(Number(event.target.value) || 0));
-          this._commit();
-          this.refresh();
-        });
-        row.appendChild(trimInput);
-        const strengthInput = document.createElement("input");
-        strengthInput.type = "number";
-        strengthInput.min = "0";
-        strengthInput.max = "1";
-        strengthInput.step = "0.01";
-        strengthInput.value = String(Math.max(0, Math.min(1, Number(segment.strength ?? 1))));
-        strengthInput.title = "Guide strength";
-        strengthInput.addEventListener("change", event => {
-          segment.strength = Math.max(0, Math.min(1, Number(event.target.value) || 0));
-          this._commit();
-          this.refresh();
-        });
-        row.appendChild(strengthInput);
-        if (kind === "ic") {
-          const attentionInput = document.createElement("input");
-          attentionInput.type = "number";
-          attentionInput.min = "0";
-          attentionInput.max = "1";
-          attentionInput.step = "0.01";
-          attentionInput.value = String(Math.max(0, Math.min(1, Number(segment.attentionStrength ?? 1))));
-          attentionInput.title = "IC attention strength";
-          attentionInput.addEventListener("change", event => {
-            segment.attentionStrength = Math.max(0, Math.min(1, Number(event.target.value) || 0));
-            this._commit();
-            this.refresh();
-          });
-          row.appendChild(attentionInput);
-        } else {
-          row.appendChild(document.createElement("span"));
-        }
-        row.appendChild(makeButton("×", `Remove ${this._mediaLabel(kind)}`, () => this._removeMedia(kind, index)));
-        items.appendChild(row);
-      });
-      lane.appendChild(items);
-      if (this.timeline.retake_mode) {
-        lane.style.opacity = "0.45";
-        lane.style.pointerEvents = "none";
-      }
-      lane.addEventListener("dragover", event => {
-        if (Array.from(event.dataTransfer?.items || []).some(item => item.kind === "file")) {
-          event.preventDefault();
-          lane.classList.add("dragover");
-        }
-      });
-      lane.addEventListener("dragleave", () => lane.classList.remove("dragover"));
-      lane.addEventListener("drop", async event => {
-        event.preventDefault();
-        lane.classList.remove("dragover");
-        await this._uploadMediaFiles(Array.from(event.dataTransfer?.files || []), kind);
-      });
-      this.media.appendChild(lane);
-    }
-    if (this.timeline.retake_mode && this.timeline.retake && typeof this.timeline.retake === "object") {
-      const retake = this.timeline.retake;
-      const lane = document.createElement("div");
-      lane.className = "ld-media-lane";
-      const head = document.createElement("div");
-      head.className = "ld-media-head";
-      head.appendChild(document.createTextNode(
-        "Retake mode (BETA) — normal keyframe and guide editing is disabled",
-      ));
-      lane.appendChild(head);
-      const row = document.createElement("div");
-      row.className = "ld-media-item";
-      const name = document.createElement("span");
-      name.textContent = String(retake.imageFile || retake.fileName || "retake").split("/").pop();
-      row.appendChild(name);
+  // Geometry of everything drawn on the canvas, shared by the renderer and hit
+  // testing so the two can never disagree.
+  _layout() {
+    const width = this._canvasWidth();
+    const schedule = loopingSchedule(this.node);
+    const retakeActive = Boolean(this.timeline.retake_mode);
+    const items = [];
 
-      // Retake selects a contiguous run of tiles; the earlier tile still owns the
-      // overlap, so adjacent selections regenerate one continuous region.
-      const lastTile = Math.max(0, loopingSchedule(this.node).chunks.length - 1);
-      const selected = retakeTileList(retake, lastTile + 1);
-      for (const [label, title, current, apply] of [
-        ["first", "First retake tile", selected[0], (value) => {
-          const end = Math.max(value, selected[selected.length - 1]);
-          setRetakeTiles(retake, value, end, lastTile);
-        }],
-        ["last", "Last retake tile (inclusive)", selected[selected.length - 1], (value) => {
-          const start = Math.min(value, selected[0]);
-          setRetakeTiles(retake, start, value, lastTile);
-        }],
-      ]) {
-        const input = document.createElement("input");
-        input.type = "number";
-        input.min = "0";
-        input.max = String(lastTile);
-        input.step = "1";
-        input.value = String(current);
-        input.title = title;
-        input.setAttribute("aria-label", `${title} (${label})`);
-        input.addEventListener("change", event => {
-          apply(Math.max(0, Math.min(lastTile, Math.round(Number(event.target.value) || 0))));
-          this._commit();
-          this.refresh();
-        });
-        row.appendChild(input);
-      }
-      for (const [key, min, max, step, title] of [
-        ["trimStart", 0, 1000000, 1, "Source trim start (frames)"],
-        ["strength", 0, 1, 0.01, "Retake strength"],
-      ]) {
-        const input = document.createElement("input");
-        input.type = "number";
-        input.min = String(min);
-        input.max = String(max);
-        input.step = String(step);
-        input.value = String(Math.max(min, Math.min(max, Number(retake[key] ?? (key === "strength" ? 1 : 0)))));
-        input.title = title;
-        input.addEventListener("change", event => {
-          retake[key] = Math.max(min, Math.min(max, Number(event.target.value) || 0));
-          this._commit();
-          this.refresh();
-        });
-        row.appendChild(input);
-      }
-      row.appendChild(makeButton("×", "Clear Retake", () => {
-        this.timeline.retake_mode = false;
-        this.timeline.retake = null;
-        this._commit();
-        this.refresh();
-      }));
-      lane.appendChild(row);
-      this.media.appendChild(lane);
-    }
-    this._renderGuideEncoding();
-  }
-
-  _renderGuideEncoding() {
-    const settings = normalizeIcSettings(this.timeline.ic_settings);
-    this.timeline.ic_settings = settings;
-    const lane = document.createElement("div");
-    lane.className = "ld-media-lane";
-    const head = document.createElement("div");
-    head.className = "ld-media-head";
-    head.appendChild(document.createTextNode("Guide encoding — Video, IC, and Retake"));
-    lane.appendChild(head);
-    const row = document.createElement("div");
-    row.className = "ld-media-item";
-
-    const update = (key, value) => {
-      settings[key] = value;
-      this.timeline.ic_settings = normalizeIcSettings(settings);
-      this._commit();
-      this.refresh();
+    const tileSpan = tile => {
+      const chunk = schedule.chunks[tile];
+      if (!chunk) return null;
+      const startFrame = tile ? schedule.chunks[tile - 1].endFrame - schedule.overlap : chunk.startFrame;
+      const owned = tile ? schedule.chunks[tile].startFrame + schedule.overlap : chunk.startFrame;
+      return {
+        x: this._frameToX(tile ? owned : chunk.startFrame, width),
+        end: this._frameToX(chunk.endFrame, width),
+        startFrame,
+      };
     };
 
-    for (const [key, options, title] of [
-      ["crop", ["center", "disabled"], "Resize crop: center crops, disabled stretches to fit"],
-      ["upscale_method", IC_UPSCALE_METHODS, "Resampling used to fit guides to the pass resolution"],
-    ]) {
-      const select = document.createElement("select");
-      select.title = title;
-      for (const option of options) {
-        const item = document.createElement("option");
-        item.value = option;
-        item.textContent = `${key === "crop" ? "crop" : ""}${option}`;
-        item.selected = settings[key] === option;
-        select.appendChild(item);
+    schedule.chunks.forEach((chunk, tile) => {
+      items.push({
+        kind: "band",
+        tile,
+        x: this._frameToX(chunk.startFrame, width),
+        w: this._frameToX(chunk.endFrame, width) - this._frameToX(chunk.startFrame, width),
+      });
+    });
+
+    if (!retakeActive) {
+      const occupied = new Set();
+      this.timeline.keyframes.forEach(keyframe => {
+        occupied.add(Number(keyframe.frame));
+        const slot = Number(keyframe.defaultSlot);
+        if (Number.isInteger(slot)) occupied.add(schedule.referenceFrames[slot]);
+      });
+      schedule.referenceFrames.forEach((frame, slot) => {
+        if (occupied.has(frame)) return;
+        items.push({
+          kind: "slot",
+          slot,
+          tile: this._tileAtFrame(frame),
+          frame,
+          x: this._frameToX(frame, width),
+          track: "main",
+        });
+      });
+      this.timeline.keyframes.forEach((keyframe, index) => {
+        const frame = Number(keyframe.frame);
+        items.push({
+          kind: "keyframe",
+          index,
+          frame,
+          tile: this._tileAtFrame(frame),
+          x: this._frameToX(frame, width),
+          file: keyframe.imageFile,
+          track: "main",
+        });
+      });
+    }
+
+    for (const [track, kind] of [["main", "video"], ["ic", "ic"], ["audio", "audio"]]) {
+      this._mediaSegments(kind).forEach((segment, index) => {
+        const span = tileSpan(Number(segment.tile) || 0);
+        if (!span) return;
+        items.push({
+          kind: "media",
+          track,
+          mediaKind: kind,
+          index,
+          tile: Number(segment.tile) || 0,
+          x: span.x,
+          w: Math.max(6, span.end - span.x),
+          segment,
+        });
+      });
+    }
+    return { width, schedule, items, retakeActive };
+  }
+
+  _trackBounds(track) {
+    if (track === "main") return [RULER_HEIGHT, RULER_HEIGHT + BLOCK_HEIGHT];
+    if (track === "ic") return [RULER_HEIGHT + BLOCK_HEIGHT, RULER_HEIGHT + BLOCK_HEIGHT + IC_TRACK_HEIGHT];
+    return [RULER_HEIGHT + BLOCK_HEIGHT + IC_TRACK_HEIGHT, CANVAS_HEIGHT];
+  }
+
+  _hitTest(x, y) {
+    const { items } = this._layout();
+    const track = y < RULER_HEIGHT ? null
+      : y < RULER_HEIGHT + BLOCK_HEIGHT ? "main"
+      : y < RULER_HEIGHT + BLOCK_HEIGHT + IC_TRACK_HEIGHT ? "ic"
+      : "audio";
+    if (!track) return null;
+    // Point items sit above spans, so test them first.
+    for (const item of items) {
+      if (item.track !== track) continue;
+      if (item.kind === "slot" || item.kind === "keyframe") {
+        if (Math.abs(x - item.x) <= 46) return item;
       }
-      select.addEventListener("change", event => update(key, event.target.value));
-      row.appendChild(select);
+    }
+    for (const item of items) {
+      if (item.kind !== "media" || item.track !== track) continue;
+      if (x >= item.x && x <= item.x + item.w) return item;
+    }
+    const band = items.find(item => item.kind === "band" && x >= item.x && x <= item.x + item.w);
+    return band ? { kind: "band", tile: band.tile, track } : null;
+  }
+
+  _renderCanvas() {
+    if (!this.ctx) return;
+    const { width, schedule, items, retakeActive } = this._layout();
+    const ratio = window.devicePixelRatio || 1;
+    this.canvas.width = Math.round(width * ratio);
+    this.canvas.height = Math.round(CANVAS_HEIGHT * ratio);
+    this.canvas.style.width = `${width}px`;
+    this.canvas.style.height = `${CANVAS_HEIGHT}px`;
+    const ctx = this.ctx;
+    ctx.setTransform(ratio, 0, 0, ratio, 0, 0);
+    ctx.clearRect(0, 0, width, CANVAS_HEIGHT);
+
+    ctx.fillStyle = "#2a2a2a";
+    ctx.fillRect(0, 0, width, CANVAS_HEIGHT);
+
+    this._drawRuler(ctx, width, schedule);
+
+    // Alternating tile bands across every track, so tile ownership reads at a glance.
+    for (const item of items) {
+      if (item.kind !== "band") continue;
+      ctx.fillStyle = item.tile % 2 ? "rgba(255,255,255,0.045)" : "rgba(255,255,255,0.015)";
+      ctx.fillRect(item.x, RULER_HEIGHT, item.w, CANVAS_HEIGHT - RULER_HEIGHT);
+      ctx.fillStyle = "#111";
+      ctx.fillRect(Math.floor(item.x + item.w) - 1, RULER_HEIGHT, 1, CANVAS_HEIGHT - RULER_HEIGHT);
+      if (item.tile === this.selectedTile) {
+        ctx.fillStyle = "rgba(136,136,136,0.10)";
+        ctx.fillRect(item.x, RULER_HEIGHT, item.w, CANVAS_HEIGHT - RULER_HEIGHT);
+      }
+      ctx.fillStyle = "#777";
+      ctx.font = "bold 10px sans-serif";
+      ctx.textAlign = "left";
+      ctx.textBaseline = "top";
+      ctx.fillText(`TILE ${item.tile}`, item.x + 6, RULER_HEIGHT + 4);
     }
 
-    const tiled = document.createElement("label");
-    tiled.className = "ld-status";
-    const checkbox = document.createElement("input");
-    checkbox.type = "checkbox";
-    checkbox.checked = settings.use_tiled_encode;
-    checkbox.title = "VAE-encode guides in tiles to cut peak VRAM";
-    checkbox.addEventListener("change", event => update("use_tiled_encode", event.target.checked));
-    tiled.appendChild(checkbox);
-    tiled.appendChild(document.createTextNode(" tiled encode"));
-    row.appendChild(tiled);
-
-    for (const [key, min, max, step, title] of [
-      ["tile_size", 64, 512, 32, "Tiled encode tile size"],
-      ["tile_overlap", 16, 256, 16, "Tiled encode overlap"],
-    ]) {
-      const input = document.createElement("input");
-      input.type = "number";
-      input.min = String(min);
-      input.max = String(max);
-      input.step = String(step);
-      input.value = String(settings[key]);
-      input.title = title;
-      input.disabled = !settings.use_tiled_encode;
-      input.addEventListener("change", event => update(key, Number(event.target.value)));
-      row.appendChild(input);
+    for (const track of ["main", "ic", "audio"]) {
+      const [top, bottom] = this._trackBounds(track);
+      ctx.fillStyle = "#111";
+      ctx.fillRect(0, bottom - 1, width, 1);
+      if (track !== "main") {
+        const empty = !items.some(item => item.kind === "media" && item.track === track);
+        if (empty) {
+          ctx.fillStyle = "#555";
+          ctx.font = "11px sans-serif";
+          ctx.textAlign = "center";
+          ctx.textBaseline = "middle";
+          ctx.fillText(
+            track === "ic" ? "Drop an IC video or image" : "Drop audio",
+            width / 2,
+            (top + bottom) / 2,
+          );
+        }
+      }
     }
-    lane.appendChild(row);
-    this.media.appendChild(lane);
+
+    for (const item of items) {
+      if (item.kind === "media") this._drawMediaBlock(ctx, item);
+    }
+    for (const item of items) {
+      if (item.kind === "slot") this._drawSlot(ctx, item);
+      if (item.kind === "keyframe") this._drawKeyframe(ctx, item);
+    }
+
+    if (retakeActive) {
+      ctx.fillStyle = "rgba(0,0,0,0.45)";
+      ctx.fillRect(0, RULER_HEIGHT, width, BLOCK_HEIGHT);
+      ctx.fillStyle = "#e6b35a";
+      ctx.font = "bold 11px sans-serif";
+      ctx.textAlign = "center";
+      ctx.textBaseline = "middle";
+      ctx.fillText("RETAKE MODE — keyframe and guide editing disabled", width / 2, RULER_HEIGHT + BLOCK_HEIGHT / 2);
+      const tiles = retakeTileList(this.timeline.retake || {}, schedule.chunks.length);
+      ctx.fillStyle = "rgba(230,179,90,0.16)";
+      for (const tile of tiles) {
+        const band = items.find(item => item.kind === "band" && item.tile === tile);
+        if (band) ctx.fillRect(band.x, RULER_HEIGHT, band.w, CANVAS_HEIGHT - RULER_HEIGHT);
+      }
+    }
+
+    // Playhead
+    const playX = Math.floor(this._frameToX(this.selectedFrame, width)) + 0.5;
+    ctx.strokeStyle = "#e5484d";
+    ctx.lineWidth = 1;
+    ctx.beginPath();
+    ctx.moveTo(playX, 0);
+    ctx.lineTo(playX, CANVAS_HEIGHT);
+    ctx.stroke();
+    ctx.fillStyle = "#e5484d";
+    ctx.fillRect(playX - 4, 0, 8, 5);
+  }
+
+  _drawRuler(ctx, width, schedule) {
+    const total = Math.max(1, schedule.frameCount - 1);
+    const rate = schedule.frameRate;
+    const seconds = this.displayMode === "seconds";
+    const targetPx = 90;
+    const unitTotal = seconds ? total / rate : total;
+    let step = Math.max(seconds ? 0.5 : 8, Math.pow(10, Math.floor(Math.log10(unitTotal / (width / targetPx)))));
+    for (const candidate of seconds ? [0.5, 1, 2, 5, 10, 15, 30, 60] : [8, 16, 48, 96, 240, 480, 960]) {
+      if (candidate >= unitTotal / (width / targetPx)) { step = candidate; break; }
+    }
+    ctx.fillStyle = "#1e1e1e";
+    ctx.fillRect(0, 0, width, RULER_HEIGHT);
+    ctx.font = "10px sans-serif";
+    ctx.textBaseline = "middle";
+
+    const minor = step / 5;
+    ctx.fillStyle = "#444";
+    for (let value = 0; value <= unitTotal + 1e-6; value += minor) {
+      const frame = seconds ? value * rate : value;
+      const x = Math.floor(this._frameToX(frame, width));
+      ctx.fillRect(x, RULER_HEIGHT - 3, 1, 3);
+    }
+    for (let value = 0; value <= unitTotal + 1e-6; value += step) {
+      const frame = seconds ? value * rate : value;
+      const x = Math.floor(this._frameToX(frame, width));
+      ctx.fillStyle = "#aaa";
+      ctx.fillRect(x, RULER_HEIGHT - 6, 1, 6);
+      if (value > 0) {
+        ctx.textAlign = "center";
+        ctx.fillText(seconds ? value.toFixed(2) : String(Math.round(value)), x, RULER_HEIGHT / 2);
+      }
+    }
+    ctx.textAlign = "left";
+    ctx.fillStyle = "#aaa";
+    ctx.fillText(seconds ? "0" : "0", 4, RULER_HEIGHT / 2);
+    ctx.fillStyle = "#111";
+    ctx.fillRect(0, RULER_HEIGHT - 1, width, 1);
+  }
+
+  // Segment block in the Director's style: a translucent header bar carrying the type
+  // tag and filename, and a prompt/label strip along the bottom.
+  _drawMediaBlock(ctx, item) {
+    const [top, bottom] = this._trackBounds(item.track);
+    const height = bottom - top;
+    const selected = this.selection && this.selection.kind === item.mediaKind && this.selection.index === item.index;
+    ctx.save();
+    ctx.beginPath();
+    ctx.rect(item.x, top, item.w, height - 1);
+    ctx.clip();
+
+    ctx.fillStyle = item.mediaKind === "audio" ? "#243447" : item.mediaKind === "ic" ? "#2e2a40" : "#233a2e";
+    ctx.fillRect(item.x, top + 1, item.w, height - 3);
+    ctx.strokeStyle = selected ? "#888" : "#111";
+    ctx.lineWidth = selected ? 2 : 1;
+    ctx.strokeRect(item.x + 0.5, top + 1.5, item.w - 1, height - 4);
+
+    const tag = item.mediaKind === "audio" ? "AUDIO" : item.mediaKind === "ic" ? "IC" : "VIDEO";
+    ctx.font = "bold 10px sans-serif";
+    const tagWidth = ctx.measureText(tag).width + 12;
+    ctx.fillStyle = "rgba(0,0,0,0.60)";
+    ctx.fillRect(item.x, top + 1, tagWidth, 16);
+    ctx.fillStyle = "#fff";
+    ctx.textAlign = "center";
+    ctx.textBaseline = "middle";
+    ctx.fillText(tag, item.x + tagWidth / 2, top + 9);
+
+    let name = this._mediaName(item.mediaKind, item.segment);
+    ctx.font = "9px sans-serif";
+    const maxWidth = item.w - tagWidth - 10;
+    if (maxWidth > 20) {
+      while (name.length && ctx.measureText(`${name}…`).width > maxWidth) name = name.slice(0, -1);
+      const textWidth = ctx.measureText(name).width;
+      ctx.fillStyle = "rgba(0,0,0,0.50)";
+      ctx.fillRect(item.x + tagWidth + 1, top + 1, textWidth + 8, 16);
+      ctx.fillStyle = "#fff";
+      ctx.textAlign = "left";
+      ctx.fillText(name, item.x + tagWidth + 5, top + 9);
+    }
+
+    const strength = Number(item.segment.strength ?? 1);
+    ctx.fillStyle = "rgba(0,0,0,0.45)";
+    ctx.fillRect(item.x, bottom - 17, item.w, 16);
+    ctx.fillStyle = "#bbb";
+    ctx.font = "9px sans-serif";
+    ctx.textAlign = "left";
+    ctx.fillText(`tile ${item.tile} · strength ${strength.toFixed(2)}`, item.x + 5, bottom - 9);
+    ctx.restore();
+  }
+
+  _drawSlot(ctx, item) {
+    const top = RULER_HEIGHT + 26;
+    const w = 92;
+    const h = 96;
+    const x = Math.max(2, Math.min(item.x - w / 2, this._canvasWidth() - w - 2));
+    ctx.save();
+    ctx.setLineDash([4, 3]);
+    ctx.strokeStyle = "#4a4a4a";
+    ctx.lineWidth = 1;
+    ctx.fillStyle = "#1e1e1e";
+    ctx.fillRect(x, top, w, h);
+    ctx.strokeRect(x + 0.5, top + 0.5, w - 1, h - 1);
+    ctx.setLineDash([]);
+    ctx.fillStyle = "#555";
+    ctx.font = "bold 22px sans-serif";
+    ctx.textAlign = "center";
+    ctx.textBaseline = "middle";
+    ctx.fillText("+", x + w / 2, top + h / 2 - 6);
+    ctx.fillStyle = "#777";
+    ctx.font = "9px sans-serif";
+    ctx.fillText(item.slot === 0 ? "start" : `tile ${item.slot}`, x + w / 2, top + h - 20);
+    ctx.fillText(frameLabel(item.frame, this.node), x + w / 2, top + h - 8);
+    ctx.restore();
+  }
+
+  _drawKeyframe(ctx, item) {
+    const top = RULER_HEIGHT + 26;
+    const w = 92;
+    const h = 96;
+    const x = Math.max(2, Math.min(item.x - w / 2, this._canvasWidth() - w - 2));
+    const isReference = item.index === this._referenceIndex();
+    const selected = this.selection && this.selection.kind === "keyframe" && this.selection.index === item.index;
+    ctx.save();
+    ctx.beginPath();
+    ctx.rect(x, top, w, h);
+    ctx.clip();
+    ctx.fillStyle = "#181818";
+    ctx.fillRect(x, top, w, h);
+
+    const image = this._thumbnail(item.file);
+    if (image && image.complete && image.naturalWidth) {
+      const scale = Math.min(w / image.naturalWidth, (h - 18) / image.naturalHeight);
+      const dw = image.naturalWidth * scale;
+      const dh = image.naturalHeight * scale;
+      ctx.drawImage(image, x + (w - dw) / 2, top + (h - 18 - dh) / 2, dw, dh);
+    }
+
+    ctx.fillStyle = "rgba(0,0,0,0.60)";
+    ctx.fillRect(x, top, 42, 16);
+    ctx.fillStyle = "#fff";
+    ctx.font = "bold 10px sans-serif";
+    ctx.textAlign = "center";
+    ctx.textBaseline = "middle";
+    ctx.fillText("IMAGE", x + 21, top + 8);
+
+    if (isReference) {
+      ctx.font = "bold 9px sans-serif";
+      const text = "REFERENCE";
+      const badgeWidth = ctx.measureText(text).width + 10;
+      ctx.fillStyle = "rgba(215,173,99,0.85)";
+      ctx.fillRect(x + w - badgeWidth, top, badgeWidth, 16);
+      ctx.fillStyle = "#1a1a1a";
+      ctx.fillText(text, x + w - badgeWidth / 2, top + 8);
+    }
+
+    ctx.fillStyle = "rgba(0,0,0,0.55)";
+    ctx.fillRect(x, top + h - 16, w, 16);
+    ctx.fillStyle = "#ccc";
+    ctx.font = "9px sans-serif";
+    ctx.fillText(`K${item.index} · ${frameLabel(item.frame, this.node)}`, x + w / 2, top + h - 8);
+    ctx.restore();
+
+    ctx.strokeStyle = selected ? "#888" : isReference ? "#d7ad63" : "#111";
+    ctx.lineWidth = selected ? 2 : 1;
+    ctx.strokeRect(x + 0.5, top + 0.5, w - 1, h - 1);
   }
 
   _renderToolbar() {
     this.toolbar.innerHTML = "";
+    this.toolbarRight.innerHTML = "";
     const retakeActive = Boolean(this.timeline.retake_mode);
+
     const addImages = makeButton("Add Image", "Upload one or more image keyframes", () => this.fileInput.click(), ICONS.upload);
-    this.toolbar.appendChild(addImages);
     const addVideo = makeButton("Add Video", "Add a standard video guide to the selected tile", () => this.mediaInputs.video.click(), ICONS.video);
     const addICVideo = makeButton("Add IC Video", "Add an IC-LoRA video or image guide to the selected tile", () => this.mediaInputs.ic.click(), ICONS.motion);
-    this.toolbar.appendChild(addVideo);
-    this.toolbar.appendChild(addICVideo);
     const addAudio = makeButton("Add Audio", "Add a custom audio segment", () => this.mediaInputs.audio.click(), ICONS.audio);
-    this.toolbar.appendChild(addAudio);
-    // Retake skips the normal guide path, so its editing entry points are inert.
     for (const button of [addImages, addVideo, addICVideo, addAudio]) {
       button.disabled = retakeActive;
       if (retakeActive) button.title = "Disabled while Retake mode is active";
+      this.toolbar.appendChild(button);
     }
-    const deleteButton = makeIconButton("Delete", "Delete the selected keyframe", () => {
-      if (this.selectedKeyframe === null) return;
-      this._deleteKeyframe(this.selectedKeyframe);
-      this._commit();
-      this.refresh();
-    }, ICONS.trash, true);
-    deleteButton.disabled = retakeActive || this.selectedKeyframe === null;
+    const deleteButton = makeIconButton("Delete", "Delete the selected item", () => this._deleteSelection(), ICONS.trash, true);
+    deleteButton.disabled = retakeActive || !this.selection;
     this.toolbar.appendChild(deleteButton);
 
     const retakeButton = makeButton(
       "Retake Mode (BETA)",
-      this.timeline.retake_mode ? "Remove the retake guide" : "Add a retake video to the selected tile",
+      retakeActive ? "Remove the retake guide" : "Add a retake video to the selected tile",
       () => {
         if (this.timeline.retake_mode) {
           this.timeline.retake_mode = false;
@@ -915,17 +1189,14 @@ class LoopingDirectorEditor {
       ICONS.retake,
     );
     if (retakeActive) retakeButton.classList.add("toggle-on");
-    this.toolbar.appendChild(retakeButton);
+    this.toolbarRight.appendChild(retakeButton);
 
     const units = document.createElement("div");
     units.className = "pr-segmented-control";
     for (const mode of ["frames", "seconds"]) {
-      // A div, like the Director's own segmented controls: .pr-segment carries no
-      // button reset, so a <button> would keep its default chrome.
       const segment = document.createElement("div");
       segment.className = `pr-segment${this.displayMode === mode ? " active" : ""}`;
       segment.textContent = mode === "frames" ? "Frames" : "Seconds";
-      segment.title = `Display keyframe labels as ${mode === "frames" ? "frame numbers" : "seconds"}`;
       segment.addEventListener("click", () => {
         this.displayMode = mode;
         this.node._loopingDirectorDisplayMode = mode;
@@ -935,247 +1206,370 @@ class LoopingDirectorEditor {
       });
       units.appendChild(segment);
     }
-    this.toolbar.appendChild(units);
+    this.toolbarRight.appendChild(units);
 
-    const referenceLabel = document.createElement("label");
-    referenceLabel.className = "ld-status";
-    referenceLabel.textContent = "External reference";
-    const referenceSelect = document.createElement("select");
-    referenceSelect.className = "pr-settings-select";
-    this.timeline.keyframes.forEach((keyframe, index) => {
-      const option = document.createElement("option");
-      option.value = String(index);
-      const filename = String(keyframe.imageFile || "").split("/").pop() || "image";
-      option.textContent = `K${index} · ${frameLabel(Number(keyframe.frame) || 0, this.node)} · ${filename}`;
-      option.selected = index === this._referenceIndex();
-      referenceSelect.appendChild(option);
-    });
-    if (!this.timeline.keyframes.length) {
-      const option = document.createElement("option");
-      option.textContent = "No keyframes";
-      option.selected = true;
-      referenceSelect.appendChild(option);
-      referenceSelect.disabled = true;
-    }
-    referenceSelect.addEventListener("change", event => {
-      this._setReferenceIndex(Number(event.target.value));
-      this._commit();
-      this.refresh();
-    });
-    this.toolbar.appendChild(referenceLabel);
-    this.toolbar.appendChild(referenceSelect);
     if (this.node._loopingDirectorWarning) {
       const warning = document.createElement("span");
       warning.className = "ld-status ld-warning";
       warning.textContent = this.node._loopingDirectorWarning;
-      this.toolbar.appendChild(warning);
+      this.toolbarRight.appendChild(warning);
     }
-    this._renderReadout();
   }
 
-  _renderReadout() {
+  _deleteSelection() {
+    if (!this.selection) return;
+    if (this.selection.kind === "keyframe") {
+      this._deleteKeyframe(this.selection.index);
+    } else {
+      this._removeMedia(this.selection.kind, this.selection.index);
+      return;
+    }
+    this.selection = null;
+    this.selectedKeyframe = null;
+    this._commit();
+    this.refresh();
+  }
+
+  _renderControls() {
     const schedule = loopingSchedule(this.node);
-    const tile = Math.max(0, schedule.chunks.findIndex(
-      chunk => this.selectedFrame >= chunk.startFrame && this.selectedFrame < chunk.endFrame,
-    ));
+    const tile = Math.max(0, Math.min(this.selectedTile ?? 0, schedule.chunks.length - 1));
     const chunk = schedule.chunks[tile];
-    if (this.boundsDisplay) {
-      this.boundsDisplay.textContent = chunk
-        ? `Tile ${tile} · ${frameLabel(chunk.startFrame, this.node)}–${frameLabel(Math.max(chunk.startFrame, chunk.endFrame - 1), this.node)}`
-        : "";
+    this.infoRow.innerHTML = "";
+
+    const left = document.createElement("div");
+    left.className = "ld-info-left";
+    const timecode = document.createElement("span");
+    timecode.className = "pr-timecode";
+    timecode.textContent = frameLabel(this.selectedFrame, this.node);
+    const bounds = document.createElement("span");
+    bounds.className = "pr-segment-bounds";
+    bounds.textContent = chunk
+      ? `Tile ${tile} | Start: ${frameLabel(chunk.startFrame, this.node)} | End: ${frameLabel(chunk.endFrame, this.node)} | Length: ${frameLabel(chunk.endFrame - chunk.startFrame, this.node)}`
+      : "";
+    left.appendChild(timecode);
+    left.appendChild(bounds);
+    this.infoRow.appendChild(left);
+
+    // Contextual strength controls for the selected block, like the Director's row.
+    const selected = this.selection;
+    const segment = selected && selected.kind !== "keyframe"
+      ? this._mediaSegments(selected.kind)[selected.index]
+      : null;
+    const addNumber = (labelText, value, min, max, step, onChange) => {
+      const label = document.createElement("span");
+      label.className = "pr-strength-label";
+      label.textContent = labelText;
+      const input = document.createElement("input");
+      input.type = "number";
+      input.className = "pr-strength-input";
+      input.min = String(min);
+      input.max = String(max);
+      input.step = String(step);
+      input.value = String(value);
+      input.addEventListener("change", event => {
+        onChange(Math.max(min, Math.min(max, Number(event.target.value) || 0)));
+        this._commit();
+        this.refresh();
+      });
+      this.infoRow.appendChild(label);
+      this.infoRow.appendChild(input);
+    };
+
+    if (segment) {
+      addNumber("Tile:", Number(segment.tile) || 0, 0, Math.max(0, schedule.chunks.length - 1), 1, value => {
+        segment.tile = value;
+        delete segment.start;
+        delete segment.length;
+      });
+      addNumber("Trim:", Math.max(0, Math.round(Number(segment.trimStart) || 0)), 0, 1000000, 1, value => {
+        segment.trimStart = value;
+      });
+      addNumber("Guide Strength:", Number(segment.strength ?? 1), 0, 1, 0.01, value => {
+        segment.strength = value;
+      });
+      if (selected.kind === "ic") {
+        addNumber("Attention:", Number(segment.attentionStrength ?? 0.65), 0, 1, 0.01, value => {
+          segment.attentionStrength = value;
+        });
+      }
+    } else if (this.timeline.retake_mode && this.timeline.retake) {
+      const retake = this.timeline.retake;
+      const last = Math.max(0, schedule.chunks.length - 1);
+      const tiles = retakeTileList(retake, schedule.chunks.length);
+      addNumber("Retake first tile:", tiles[0], 0, last, 1, value => {
+        setRetakeTiles(retake, value, Math.max(value, tiles[tiles.length - 1]), last);
+      });
+      addNumber("last tile:", tiles[tiles.length - 1], 0, last, 1, value => {
+        setRetakeTiles(retake, Math.min(value, tiles[0]), value, last);
+      });
+      addNumber("Retake Strength:", Number(retake.strength ?? 1), 0, 1, 0.01, value => {
+        retake.strength = value;
+      });
+    } else {
+      const label = document.createElement("span");
+      label.className = "pr-strength-label";
+      label.textContent = "External reference:";
+      const select = document.createElement("select");
+      select.className = "pr-settings-select";
+      this.timeline.keyframes.forEach((keyframe, index) => {
+        const option = document.createElement("option");
+        option.value = String(index);
+        const filename = String(keyframe.imageFile || "").split("/").pop() || "image";
+        option.textContent = `K${index} · ${frameLabel(Number(keyframe.frame) || 0, this.node)} · ${filename}`;
+        option.selected = index === this._referenceIndex();
+        select.appendChild(option);
+      });
+      if (!this.timeline.keyframes.length) {
+        const option = document.createElement("option");
+        option.textContent = "No keyframes";
+        select.appendChild(option);
+        select.disabled = true;
+      }
+      select.addEventListener("change", event => {
+        this._setReferenceIndex(Number(event.target.value));
+        this._commit();
+        this.refresh();
+      });
+      this.infoRow.appendChild(label);
+      this.infoRow.appendChild(select);
     }
-    if (this.timecodeDisplay) {
-      this.timecodeDisplay.textContent = frameLabel(this.selectedFrame, this.node);
+
+    this._renderPlayer(schedule);
+    this._renderGuideEncoding();
+  }
+
+  _renderPlayer(schedule) {
+    this.playerRow.innerHTML = "";
+    const play = document.createElement("button");
+    play.className = "pr-icon-btn";
+    play.style.padding = "4px";
+    play.innerHTML = this._playTimer ? ICONS.pause : ICONS.play;
+    play.title = "Scrub the playhead across the clip";
+    play.addEventListener("click", () => this._togglePlay());
+    this.playerRow.appendChild(play);
+
+    const loop = document.createElement("button");
+    loop.className = "pr-icon-btn";
+    loop.style.padding = "4px";
+    loop.innerHTML = ICONS.loop;
+    loop.title = "Loop the playhead";
+    if (this._loopPlayback) loop.classList.add("toggle-on");
+    loop.addEventListener("click", () => {
+      this._loopPlayback = !this._loopPlayback;
+      this._renderPlayer(schedule);
+    });
+    this.playerRow.appendChild(loop);
+
+    const seek = document.createElement("input");
+    seek.type = "range";
+    seek.className = "pr-seek-bar";
+    seek.style.flex = "1";
+    seek.min = "0";
+    seek.max = String(Math.max(0, schedule.frameCount - 1));
+    seek.step = String(TIME_SCALE);
+    seek.value = String(this.selectedFrame);
+    seek.addEventListener("input", event => {
+      this.selectedFrame = snapFrame(Number(event.target.value), schedule.frameCount);
+      this.selectedTile = this._tileAtFrame(this.selectedFrame);
+      this._renderCanvas();
+      this._renderControls();
+    });
+    this.playerRow.appendChild(seek);
+
+    const zoom = document.createElement("div");
+    zoom.className = "pr-zoom-controls";
+    const setZoom = value => {
+      this.zoom = Math.max(1, Math.min(8, value));
+      this._renderCanvas();
+      this._renderControls();
+    };
+    const out = document.createElement("button");
+    out.className = "pr-icon-btn";
+    out.style.padding = "4px";
+    out.innerHTML = ICONS.minus;
+    out.title = "Zoom out";
+    out.addEventListener("click", () => setZoom(this.zoom / 1.5));
+    const slider = document.createElement("input");
+    slider.type = "range";
+    slider.className = "pr-zoom-slider";
+    slider.min = "1";
+    slider.max = "8";
+    slider.step = "0.1";
+    slider.value = String(this.zoom);
+    slider.addEventListener("input", event => setZoom(Number(event.target.value)));
+    const inBtn = document.createElement("button");
+    inBtn.className = "pr-icon-btn";
+    inBtn.style.padding = "4px";
+    inBtn.innerHTML = ICONS.plus;
+    inBtn.title = "Zoom in";
+    inBtn.addEventListener("click", () => setZoom(this.zoom * 1.5));
+    const fit = document.createElement("button");
+    fit.className = "pr-icon-btn";
+    fit.style.padding = "4px";
+    fit.innerHTML = ICONS.fit;
+    fit.title = "Fit the clip to the viewport";
+    fit.addEventListener("click", () => setZoom(1));
+    for (const control of [out, slider, inBtn, fit]) zoom.appendChild(control);
+    this.playerRow.appendChild(zoom);
+  }
+
+  _togglePlay() {
+    if (this._playTimer) {
+      clearInterval(this._playTimer);
+      this._playTimer = null;
+      this._renderControls();
+      return;
+    }
+    const schedule = loopingSchedule(this.node);
+    const step = TIME_SCALE;
+    const interval = (step / Math.max(1, schedule.frameRate)) * 1000;
+    this._playTimer = setInterval(() => {
+      let next = this.selectedFrame + step;
+      if (next > schedule.frameCount - 1) {
+        if (!this._loopPlayback) {
+          clearInterval(this._playTimer);
+          this._playTimer = null;
+          this._renderControls();
+          return;
+        }
+        next = 0;
+      }
+      this.selectedFrame = next;
+      this.selectedTile = this._tileAtFrame(next);
+      this._renderCanvas();
+    }, Math.max(30, interval));
+    this._renderControls();
+  }
+
+  _renderGuideEncoding() {
+    const settings = normalizeIcSettings(this.timeline.ic_settings);
+    this.timeline.ic_settings = settings;
+    this.settingsRow.innerHTML = "";
+
+    const update = (key, value) => {
+      settings[key] = value;
+      this.timeline.ic_settings = normalizeIcSettings(settings);
+      this._commit();
+      this.refresh();
+    };
+
+    const heading = document.createElement("span");
+    heading.className = "pr-strength-label";
+    heading.style.marginLeft = "0";
+    heading.textContent = "Guide encoding";
+    this.settingsRow.appendChild(heading);
+
+    const addSelect = (key, options, labelText, format) => {
+      const label = document.createElement("label");
+      label.textContent = labelText;
+      const select = document.createElement("select");
+      for (const option of options) {
+        const item = document.createElement("option");
+        item.value = option;
+        item.textContent = format ? format(option) : option;
+        item.selected = settings[key] === option;
+        select.appendChild(item);
+      }
+      select.addEventListener("change", event => update(key, event.target.value));
+      label.appendChild(select);
+      this.settingsRow.appendChild(label);
+    };
+
+    addSelect("crop", ["center", "disabled"], "crop", option => option === "center" ? "center crop" : "stretch to fit");
+    addSelect("upscale_method", IC_UPSCALE_METHODS, "resample");
+
+    const tiled = document.createElement("label");
+    const checkbox = document.createElement("input");
+    checkbox.type = "checkbox";
+    checkbox.checked = settings.use_tiled_encode;
+    checkbox.addEventListener("change", event => update("use_tiled_encode", event.target.checked));
+    tiled.appendChild(checkbox);
+    tiled.appendChild(document.createTextNode("tiled encode"));
+    tiled.title = "VAE-encode guides in tiles to cut peak VRAM";
+    this.settingsRow.appendChild(tiled);
+
+    for (const [key, min, max, step, labelText] of [
+      ["tile_size", 64, 512, 32, "size"],
+      ["tile_overlap", 16, 256, 16, "overlap"],
+    ]) {
+      const label = document.createElement("label");
+      label.textContent = labelText;
+      const input = document.createElement("input");
+      input.type = "number";
+      input.min = String(min);
+      input.max = String(max);
+      input.step = String(step);
+      input.value = String(settings[key]);
+      input.disabled = !settings.use_tiled_encode;
+      input.addEventListener("change", event => update(key, Number(event.target.value)));
+      label.appendChild(input);
+      this.settingsRow.appendChild(label);
     }
   }
 
-  _renderStrip() {
-    const schedule = loopingSchedule(this.node);
-    const totalFrames = schedule.frameCount;
-    const chunks = schedule.chunks;
-    this.strip.innerHTML = "";
-    for (let index = 0; index < chunks.length; index += 1) {
-      const chunk = chunks[index];
-      const band = document.createElement("div");
-      band.className = "ld-tile-band";
-      const left = chunk.startFrame / Math.max(1, totalFrames - 1) * 100;
-      const right = chunk.endFrame / Math.max(1, totalFrames - 1) * 100;
-      band.style.left = `${Math.max(0, Math.min(100, left))}%`;
-      band.style.width = `${Math.max(0, Math.min(100, right) - Math.max(0, left))}%`;
-      band.title = `Tile ${index}: ${frameLabel(chunk.startFrame, this.node)}–${frameLabel(Math.max(chunk.startFrame, chunk.endFrame - 1), this.node)}`;
-      this.strip.appendChild(band);
-    }
-
-    const referenceIndex = this._referenceIndex();
-    // Retake replaces the normal guide path entirely, so keyframes stay visible but
-    // become read-only rather than silently having no effect.
-    const retakeActive = Boolean(this.timeline.retake_mode);
-    this.strip.classList.toggle("retake-locked", retakeActive);
-    this.timeline.keyframes.forEach((keyframe, index) => {
-      const frame = Number(keyframe.frame);
-      const marker = document.createElement("div");
-      const valid = Number.isInteger(frame) && frame >= 0 && frame < totalFrames && frame % TIME_SCALE === 0;
-      marker.className = `ld-frame-marker${index === referenceIndex ? " reference" : ""}${keyframe.autoPosition ? " auto" : ""}${index === this.selectedKeyframe ? " selected" : ""}${valid ? "" : " invalid"}`;
-      const markerPosition = Math.max(0, Math.min(100, frame / Math.max(1, totalFrames - 1) * 100));
-      marker.style.left = `${markerPosition}%`;
-      marker.style.transform = markerPosition <= 4 ? "translateX(2px)" : markerPosition >= 96 ? "translateX(-100%)" : "translateX(-50%)";
-      marker.title = valid
-        ? `Keyframe K${index} at ${frameLabel(frame, this.node)}${index === referenceIndex ? " (external reference)" : ""}`
-        : `Keyframe K${index}: invalid position`;
-      const image = document.createElement("img");
-      if (keyframe.imageFile) {
-        const parts = String(keyframe.imageFile).split("/");
-        const filename = parts.pop() || "";
-        const subfolder = parts.join("/");
-        image.src = api.apiURL(`/view?filename=${encodeURIComponent(filename)}&type=input&subfolder=${encodeURIComponent(subfolder)}`);
-      }
-      marker.appendChild(image);
-      const label = document.createElement("span");
-      label.textContent = Number.isFinite(frame) ? `K${index} · ${frameLabel(frame, this.node)}` : `K${index} · invalid`;
-      marker.appendChild(label);
-      if (!retakeActive) {
-        const remove = document.createElement("button");
-        remove.type = "button";
-        remove.className = "ld-delete";
-        remove.textContent = "×";
-        remove.addEventListener("click", event => {
-          event.stopPropagation();
-          this._deleteKeyframe(index);
-          this._commit();
-          this.refresh();
-        });
-        marker.appendChild(remove);
-      }
-
-      marker.addEventListener("pointerdown", event => {
-        event.stopPropagation();
-        this.selectedKeyframe = index;
-        if (valid) this.selectedFrame = frame;
-        this.strip.querySelectorAll(".ld-frame-marker").forEach(item => {
-          item.classList.toggle("selected", item === marker);
-        });
-        if (retakeActive) return;
-        marker.setPointerCapture?.(event.pointerId);
-        const move = moveEvent => {
-          const rect = this.strip.getBoundingClientRect();
-          const ratio = Math.max(0, Math.min(1, (moveEvent.clientX - rect.left) / Math.max(1, rect.width)));
-          keyframe.frame = snapFrame(ratio * (totalFrames - 1), totalFrames);
-          keyframe.autoPosition = false;
-          marker.style.left = `${Math.max(0, Math.min(100, keyframe.frame / Math.max(1, totalFrames - 1) * 100))}%`;
-          const position = keyframe.frame / Math.max(1, totalFrames - 1) * 100;
-          marker.style.transform = position <= 4 ? "translateX(2px)" : position >= 96 ? "translateX(-100%)" : "translateX(-50%)";
-          label.textContent = `K${index} · ${frameLabel(keyframe.frame, this.node)}`;
-          this._commit();
-          this._renderToolbar();
-        };
-        const up = () => {
-          marker.removeEventListener("pointermove", move);
-          marker.removeEventListener("pointerup", up);
-          marker.removeEventListener("pointercancel", up);
-        };
-        marker.addEventListener("pointermove", move);
-        marker.addEventListener("pointerup", up);
-        marker.addEventListener("pointercancel", up);
-        this._renderToolbar();
+  _buildPromptPanels() {
+    const makePanel = (container, labelText) => {
+      const wrapper = document.createElement("div");
+      wrapper.className = "pr-prompt-wrapper";
+      const label = document.createElement("div");
+      label.className = "pr-prompt-label";
+      label.textContent = labelText;
+      const area = document.createElement("textarea");
+      area.className = "pr-prompt-area";
+      area.addEventListener("focus", () => {
+        wrapper.classList.add("focus-active");
+        this.container.classList.add("has-focus");
       });
-      this.strip.appendChild(marker);
+      area.addEventListener("blur", () => {
+        wrapper.classList.remove("focus-active");
+        this.container.classList.remove("has-focus");
+      });
+      wrapper.appendChild(label);
+      wrapper.appendChild(area);
+      container.appendChild(wrapper);
+      return { label, area };
+    };
+
+    this.tilePanel = makePanel(this.tileProp, "TILE PROMPT");
+    this.tilePanel.area.placeholder = DEFAULT_TILE_PROMPT;
+    this.tilePanel.area.addEventListener("input", event => {
+      const tile = Math.max(0, this.selectedTile ?? 0);
+      this.timeline.tile_prompts[tile] = event.target.value;
+      this._commit();
     });
 
-    this._renderEmptySlots(schedule, totalFrames, retakeActive);
-  }
-
-  // One slot per tile: frame 0, then the middle of each tile overlap. Slots are derived
-  // from the current schedule, so changing the duration re-lays them out. They are
-  // presentation only — an empty slot is never written to the timeline, so no keyframe
-  // is used at that index until an image is dropped on it.
-  _renderEmptySlots(schedule, totalFrames, retakeActive) {
-    if (retakeActive) return;
-    const occupied = new Set();
-    for (const keyframe of this.timeline.keyframes) {
-      occupied.add(Number(keyframe.frame));
-      const slot = Number(keyframe.defaultSlot);
-      if (Number.isInteger(slot)) occupied.add(schedule.referenceFrames[slot]);
-    }
-    schedule.referenceFrames.forEach((frame, slot) => {
-      if (occupied.has(frame)) return;
-      const marker = document.createElement("div");
-      marker.className = "ld-frame-marker empty";
-      const position = Math.max(0, Math.min(100, frame / Math.max(1, totalFrames - 1) * 100));
-      marker.style.left = `${position}%`;
-      marker.style.transform = position <= 4 ? "translateX(2px)" : position >= 96 ? "translateX(-100%)" : "translateX(-50%)";
-      marker.title = `Empty slot at ${frameLabel(frame, this.node)} — click or drop an image to use a keyframe here`;
-
-      const drop = document.createElement("div");
-      drop.className = "ld-slot-drop";
-      drop.innerHTML = ICONS.plus;
-      marker.appendChild(drop);
-      const label = document.createElement("span");
-      label.textContent = `${slot === 0 ? "start" : `tile ${slot}`} · ${frameLabel(frame, this.node)}`;
-      marker.appendChild(label);
-
-      marker.addEventListener("click", event => {
-        event.stopPropagation();
-        this.selectedFrame = frame;
-        this._pendingSlot = slot;
-        this.fileInput.click();
-      });
-      marker.addEventListener("dragover", event => {
-        if (Array.from(event.dataTransfer?.items || []).some(item => item.kind === "file")) {
-          event.preventDefault();
-          event.stopPropagation();
-          marker.classList.add("dragover");
-        }
-      });
-      marker.addEventListener("dragleave", () => marker.classList.remove("dragover"));
-      marker.addEventListener("drop", async event => {
-        event.preventDefault();
-        event.stopPropagation();
-        marker.classList.remove("dragover");
-        this._pendingSlot = slot;
-        await this._uploadFiles(Array.from(event.dataTransfer?.files || []));
-      });
-      this.strip.appendChild(marker);
+    this.globalPanel = makePanel(this.globalProp, "GLOBAL PROMPT");
+    this.globalPanel.area.placeholder = "Shared identity, setting, lighting, style and audio…";
+    this.globalPanel.area.addEventListener("input", event => {
+      const widget = this.node.widgets?.find(item => item.name === "global_prompt");
+      if (widget) widget.value = event.target.value;
+      this._commit();
     });
   }
 
   _renderPrompts() {
     const chunks = loopingSchedule(this.node).chunks;
-    const count = chunks.length;
-    this._ensurePromptCount(count);
-    this.prompts.innerHTML = "";
-    for (let index = 0; index < count; index += 1) {
-      const chunk = chunks[index];
-      const cell = document.createElement("div");
-      cell.className = "ld-prompt-cell";
-      const wrapper = document.createElement("div");
-      wrapper.className = "pr-prompt-wrapper";
-      const label = document.createElement("div");
-      label.className = "pr-prompt-label";
-      label.textContent = `Tile ${index} · ${frameLabel(chunk.startFrame, this.node)}–${frameLabel(Math.max(chunk.startFrame, chunk.endFrame - 1), this.node)}`;
-      wrapper.appendChild(label);
-      const textarea = document.createElement("textarea");
-      textarea.className = "pr-prompt-area";
-      textarea.placeholder = DEFAULT_TILE_PROMPT;
-      textarea.value = this.timeline.tile_prompts[index] || "";
-      textarea.addEventListener("input", event => {
-        this.timeline.tile_prompts[index] = event.target.value;
-        this._commit();
-      });
-      // Matches the Director: the focused prompt stays lit and its siblings dim.
-      textarea.addEventListener("focus", () => {
-        wrapper.classList.add("focus-active");
-        this.container.classList.add("has-focus");
-        this.selectedFrame = snapFrame(chunk.startFrame, frameCount(this.node));
-        this._renderReadout();
-      });
-      textarea.addEventListener("blur", () => {
-        wrapper.classList.remove("focus-active");
-        this.container.classList.remove("has-focus");
-      });
-      wrapper.appendChild(textarea);
-      cell.appendChild(wrapper);
-      this.prompts.appendChild(cell);
+    this._ensurePromptCount(chunks.length);
+    const tile = Math.max(0, Math.min(this.selectedTile ?? 0, chunks.length - 1));
+    const chunk = chunks[tile];
+    this.tilePanel.label.textContent = chunk
+      ? `TILE PROMPT — TILE ${tile} · ${frameLabel(chunk.startFrame, this.node)}–${frameLabel(Math.max(chunk.startFrame, chunk.endFrame - 1), this.node)}`
+      : "TILE PROMPT";
+    if (document.activeElement !== this.tilePanel.area) {
+      this.tilePanel.area.value = this.timeline.tile_prompts[tile] || "";
     }
+    const widget = this.node.widgets?.find(item => item.name === "global_prompt");
+    if (document.activeElement !== this.globalPanel.area) {
+      this.globalPanel.area.value = typeof widget?.value === "string" ? widget.value : "";
+    }
+  }
+
+  _renderAll() {
+    this._buildSidebar();
+    this._renderToolbar();
+    this._renderCanvas();
+    this._renderControls();
+    this._renderPrompts();
   }
 
   _normalizeGuideSegments() {
@@ -1269,15 +1663,25 @@ class LoopingDirectorEditor {
     const moved = this._syncAutoKeyframes();
     const promptsChanged = this._ensurePromptCount(tileCount(this.node));
     const guideChanged = this._normalizeGuideSegments();
-    this._renderToolbar();
-    this._renderStrip();
-    this._renderMedia();
-    this._renderPrompts();
+    const tiles = tileCount(this.node);
+    if (this.selectedTile === undefined || this.selectedTile === null || this.selectedTile >= tiles) {
+      this.selectedTile = this._tileAtFrame(this.selectedFrame);
+    }
+    this._renderAll();
     if (commit || moved || promptsChanged || guideChanged) this._commit();
   }
 
   syncLayout() {
     if (this.container.parentElement) this.container.style.width = "100%";
+    // The canvas is sized from the viewport, so a node resize has to redraw it.
+    this._renderCanvas();
+  }
+
+  destroy() {
+    if (this._playTimer) {
+      clearInterval(this._playTimer);
+      this._playTimer = null;
+    }
   }
 }
 
@@ -1293,6 +1697,9 @@ app.registerExtension({
       hideWidget(timelineWidget);
       const referenceWidget = this.widgets?.find(widget => widget.name === "reference_keyframe_index");
       hideWidget(referenceWidget);
+      // The global prompt is edited in the GLOBAL PROMPT panel, as in the Director.
+      // The widget itself stays in the schema and keeps carrying the value.
+      hideWidget(this.widgets?.find(widget => widget.name === "global_prompt"));
       this.properties = this.properties || {};
       this._loopingDirectorDisplayMode = this.properties.looping_director_display_mode || "seconds";
 
@@ -1301,10 +1708,11 @@ app.registerExtension({
         getValue: () => "",
         setValue: () => {},
       });
-      domWidget.computeSize = width => [Math.max(10, width - 20), 470];
+      const editorHeight = RULER_HEIGHT + BLOCK_HEIGHT + IC_TRACK_HEIGHT + AUDIO_TRACK_HEIGHT + 280;
+      domWidget.computeSize = width => [Math.max(10, width - 20), editorHeight];
       this._loopingDirectorEditor = new LoopingDirectorEditor(this, container);
-      this.size[0] = Math.max(this.size?.[0] || 0, 760);
-      this.size[1] = Math.max(this.size?.[1] || 0, 620);
+      this.size[0] = Math.max(this.size?.[0] || 0, 900);
+      this.size[1] = Math.max(this.size?.[1] || 0, editorHeight + 180);
     };
 
     const originalOnConfigure = nodeType.prototype.onConfigure;
