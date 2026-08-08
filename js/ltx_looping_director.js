@@ -18,6 +18,20 @@ const DEFAULT_SETTINGS = {
   reference_keyframe_index: 0,
 };
 
+// The Director's own stylesheet (id "prompt-relay-styles") is injected globally by
+// ltx_director.js, which loads from the same web directory. Reusing its `pr-` classes
+// keeps both editors visually identical without copying its rules or editing it.
+// These icons are duplicated rather than imported because that file exports nothing.
+const ICONS = {
+  upload: `<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="17 8 12 3 7 8"></polyline><line x1="12" y1="3" x2="12" y2="15"></line></svg>`,
+  audio: `<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 18V5l12-2v13"></path><circle cx="6" cy="18" r="3"></circle><circle cx="18" cy="16" r="3"></circle></svg>`,
+  motion: `<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="23 7 16 12 23 17 23 7"></polygon><rect x="1" y="5" width="15" height="14" rx="2" ry="2"></rect></svg>`,
+  video: `<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="23 7 16 12 23 17 23 7"></polygon><rect x="1" y="5" width="15" height="14" rx="2" ry="2"></rect></svg>`,
+  trash: `<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"></polyline><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path></svg>`,
+  retake: `<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21.5 2v6h-6M21.34 15.57a10 10 0 1 1-.57-8.38l5.67-5.67"/></svg>`,
+  plus: `<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19"></line><line x1="5" y1="12" x2="19" y2="12"></line></svg>`,
+};
+
 function hideWidget(widget) {
   if (!widget) return;
   widget.hidden = true;
@@ -176,13 +190,24 @@ function frameLabel(frame, node) {
   return `${frame}f`;
 }
 
-function makeButton(label, title, handler) {
+function makeButton(label, title, handler, icon) {
   const button = document.createElement("button");
   button.type = "button";
-  button.textContent = label;
+  button.className = "pr-btn";
+  if (icon) {
+    button.innerHTML = icon;
+    button.appendChild(document.createTextNode(` ${label}`));
+  } else {
+    button.textContent = label;
+  }
   button.title = title || label;
-  button.className = "ld-button";
   button.addEventListener("click", handler);
+  return button;
+}
+
+function makeIconButton(label, title, handler, icon, danger) {
+  const button = makeButton(label, title, handler, icon);
+  if (danger) button.classList.add("pr-btn-danger");
   return button;
 }
 
@@ -200,52 +225,67 @@ class LoopingDirectorEditor {
   }
 
   _build() {
-    this.container.className = "ld-editor";
+    this.container.className = "pr-wrapper ld-editor";
     this.container.innerHTML = `
       <style>
-        .ld-editor { color: #ddd; font: 12px ui-sans-serif, system-ui, sans-serif; width: 100%; box-sizing: border-box; padding: 6px 0; }
-        .ld-toolbar { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; margin-bottom: 7px; }
-        .ld-button { background: #292929; border: 1px solid #555; border-radius: 4px; color: #ddd; padding: 4px 8px; cursor: pointer; }
-        .ld-button:hover { background: #383838; }
-        .ld-button:disabled { cursor: default; opacity: .45; }
-        .ld-status { color: #999; margin-left: 4px; }
+        /* Layout and looping-specific chrome. Buttons, prompt panels and readouts
+           reuse the Director's own pr- classes so both editors look the same. */
+        .ld-editor { font-size: 12px; color: #e0e0e0; padding-bottom: 4px; }
+        .ld-section-label { color: #666; margin: 6px 0 4px; font-size: 9px; font-weight: bold; text-transform: uppercase; letter-spacing: .5px; user-select: none; }
+        .ld-status { color: #aaa; font-size: 11px; }
         .ld-warning { color: #e6b35a; }
-        .ld-strip-label { color: #aaa; margin: 5px 0 3px; font-size: 11px; }
-        .ld-keyframe-strip { height: 90px; position: relative; overflow: hidden; border: 1px solid #444; border-radius: 4px; background: #171717; cursor: crosshair; transition: border-color .15s; }
-        .ld-keyframe-strip.dragover { border-color: #8eb7ff; background: #202735; }
-        .ld-tile-band { position: absolute; top: 0; bottom: 0; border-right: 1px solid rgba(255,255,255,.12); background: rgba(100,130,180,.08); pointer-events: none; }
-        .ld-tile-band:nth-child(even) { background: rgba(130,100,180,.08); }
-        .ld-frame-marker { position: absolute; top: 2px; width: 90px; height: 72px; transform: translateX(-50%); background: #282828; border: 1px solid #777; border-radius: 4px; padding: 2px; box-sizing: border-box; cursor: grab; z-index: 3; }
+        .ld-keyframe-strip { height: 94px; position: relative; overflow: hidden; border: 1px solid #111; border-radius: 6px; background: #2a2a2a; cursor: crosshair; transition: border-color .2s ease; }
+        .ld-keyframe-strip.dragover { border-color: #888; background: rgba(255,255,255,.05); }
+        .ld-tile-band { position: absolute; top: 0; bottom: 0; border-right: 1px solid rgba(255,255,255,.10); background: rgba(255,255,255,.02); pointer-events: none; }
+        .ld-tile-band:nth-child(even) { background: rgba(255,255,255,.05); }
+        .ld-frame-marker { position: absolute; top: 4px; width: 92px; height: 76px; transform: translateX(-50%); background: #222; border: 1px solid #111; border-radius: 6px; padding: 3px; box-sizing: border-box; cursor: grab; z-index: 3; transition: border-color .2s ease, background .2s ease; }
+        .ld-frame-marker:hover { background: #333; border-color: #555; }
         .ld-frame-marker.reference { border-color: #d7ad63; }
-        .ld-frame-marker.auto { border-color: #7e9e88; }
-        .ld-frame-marker.selected { border-color: #8eb7ff; box-shadow: 0 0 0 1px #5178aa; }
-        .ld-frame-marker.invalid { border-color: #c86767; }
-        .ld-frame-marker img { display: block; width: 82px; height: 52px; object-fit: contain; background: #111; border-radius: 2px; pointer-events: none; }
-        .ld-frame-marker span { display: block; text-align: center; color: #bbb; font-size: 10px; line-height: 14px; white-space: nowrap; overflow: hidden; }
-        .ld-frame-marker .ld-delete { position: absolute; right: -5px; top: -7px; width: 17px; height: 17px; padding: 0; border-radius: 9px; border: 1px solid #777; background: #292929; color: #eee; cursor: pointer; }
-        .retake-locked .ld-frame-marker { cursor: default; opacity: 0.55; }
-        .ld-prompts { display: flex; gap: 6px; overflow-x: auto; padding: 3px 0 5px; }
-        .ld-tile { flex: 0 0 170px; min-height: 115px; border: 1px solid #444; border-radius: 4px; background: #202020; padding: 5px; box-sizing: border-box; }
-        .ld-tile-title { color: #9bb7e6; font-size: 11px; margin-bottom: 4px; }
-        .ld-tile-range { color: #777; font-size: 10px; margin-left: 3px; }
-        .ld-tile textarea { width: 100%; height: 82px; resize: vertical; box-sizing: border-box; border: 1px solid #444; border-radius: 3px; background: #151515; color: #eee; padding: 5px; font: 11px ui-sans-serif, system-ui, sans-serif; }
-        .ld-media { display: grid; gap: 5px; margin: 5px 0 8px; }
-        .ld-media-lane { border: 1px solid #444; border-radius: 4px; background: #202020; padding: 5px; min-height: 34px; transition: border-color .15s, background .15s; }
-        .ld-media-lane.dragover { border-color: #8eb7ff; background: #202735; }
-        .ld-media-head { display: flex; align-items: center; gap: 5px; color: #aaa; font-size: 11px; }
-        .ld-media-items { display: grid; gap: 4px; margin-top: 4px; }
-        .ld-media-item { display: grid; grid-template-columns: minmax(0, 1fr) 48px 48px 48px 48px 20px; gap: 4px; align-items: center; color: #bbb; font-size: 10px; }
-        .ld-media-item input { width: 100%; box-sizing: border-box; border: 1px solid #444; border-radius: 3px; background: #151515; color: #eee; padding: 3px; font-size: 10px; }
-        .ld-media-item button { padding: 1px 4px; }
+        .ld-frame-marker.auto { border-color: #3a4a3e; }
+        .ld-frame-marker.selected { border-color: #888; box-shadow: 0 0 0 1px #555; }
+        .ld-frame-marker.invalid { border-color: #cc4444; }
+        .ld-frame-marker img { display: block; width: 84px; height: 52px; object-fit: contain; background: #181818; border-radius: 3px; pointer-events: none; }
+        .ld-frame-marker span { display: block; text-align: center; color: #aaa; font-size: 10px; line-height: 15px; white-space: nowrap; overflow: hidden; }
+        .ld-frame-marker .ld-delete { position: absolute; right: -6px; top: -7px; width: 17px; height: 17px; padding: 0; line-height: 1; border-radius: 9px; border: 1px solid #111; background: #222; color: #e0e0e0; cursor: pointer; transition: all .2s ease; }
+        .ld-frame-marker .ld-delete:hover { background: #4a1515; border-color: #cc4444; color: #ffaaaa; }
+        /* An empty slot is a placeholder only: it holds a position for a tile but is
+           not a keyframe until an image is dropped on it. */
+        .ld-frame-marker.empty { border-style: dashed; border-color: #444; background: #1e1e1e; cursor: pointer; }
+        .ld-frame-marker.empty:hover { border-color: #888; background: #262626; }
+        .ld-frame-marker.empty .ld-slot-drop { display: flex; align-items: center; justify-content: center; width: 84px; height: 52px; border-radius: 3px; background: #181818; color: #555; pointer-events: none; }
+        .ld-frame-marker.empty.dragover { border-color: #888; border-style: solid; background: rgba(255,255,255,.06); }
+        .retake-locked .ld-frame-marker { cursor: default; opacity: .55; }
+        .ld-prompts { display: grid; grid-template-columns: repeat(auto-fill, minmax(210px, 1fr)); gap: 6px; padding-bottom: 2px; }
+        .ld-prompt-cell { height: 118px; }
+        .ld-media { display: grid; gap: 6px; margin-bottom: 2px; }
+        .ld-media-lane { border: 1px solid #333; border-radius: 6px; background: #1e1e1e; padding: 6px 10px; transition: border-color .2s ease, background .2s ease; }
+        .ld-media-lane.dragover { border-color: #888; background: rgba(255,255,255,.05); }
+        .ld-media-head { display: flex; align-items: center; gap: 8px; color: #fff; font-size: 11px; font-weight: 600; }
+        .ld-media-head .pr-btn { margin-left: auto; padding: 3px 9px; }
+        .ld-media-items { display: grid; gap: 4px; margin-top: 6px; }
+        .ld-media-item { display: grid; grid-template-columns: minmax(0, 1fr) 52px 52px 52px 52px 22px; gap: 6px; align-items: center; color: #aaa; font-size: 11px; }
+        .ld-media-item > span:first-child { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+        .ld-media-item input[type=number], .ld-media-item select { font-size: 11px; color: #fff; background: #222; border: 1px solid #444; border-radius: 4px; text-align: center; padding: 3px; box-sizing: border-box; width: 100%; }
+        .ld-media-item .ld-delete { padding: 1px 6px; background: #222; color: #e0e0e0; border: 1px solid #111; border-radius: 4px; cursor: pointer; transition: all .2s ease; }
+        .ld-media-item .ld-delete:hover { background: #4a1515; border-color: #cc4444; color: #ffaaaa; }
+        .ld-media-item label { display: flex; align-items: center; gap: 4px; white-space: nowrap; }
       </style>
-      <div class="ld-toolbar"></div>
-      <div class="ld-strip-label">Keyframes — drop images here or use Add images. New images land at frame 0 and the middle of each tile overlap; drag a marker to adjust its index.</div>
+      <div class="pr-toolbar">
+        <div class="pr-actions"></div>
+        <div class="pr-right-group">
+          <span class="pr-segment-bounds"></span>
+          <span class="pr-timecode"></span>
+        </div>
+      </div>
+      <div class="ld-section-label">Keyframes — one slot per tile at frame 0 and each tile overlap. Drop an image on a slot, or leave it empty to use no keyframe there.</div>
       <div class="ld-keyframe-strip"></div>
       <div class="ld-media"></div>
-      <div class="ld-strip-label">One prompt per looping tile. Tile prompts are fixed to their tile and cannot overlap.</div>
+      <div class="ld-section-label">Prompts — one per looping tile</div>
       <div class="ld-prompts"></div>
     `;
-    this.toolbar = this.container.querySelector(".ld-toolbar");
+    this.toolbar = this.container.querySelector(".pr-actions");
+    this.boundsDisplay = this.container.querySelector(".pr-segment-bounds");
+    this.timecodeDisplay = this.container.querySelector(".pr-timecode");
     this.strip = this.container.querySelector(".ld-keyframe-strip");
     this.media = this.container.querySelector(".ld-media");
     this.prompts = this.container.querySelector(".ld-prompts");
@@ -837,21 +877,30 @@ class LoopingDirectorEditor {
   _renderToolbar() {
     this.toolbar.innerHTML = "";
     const retakeActive = Boolean(this.timeline.retake_mode);
-    const addImages = makeButton("Add images", "Upload one or more image keyframes", () => this.fileInput.click());
+    const addImages = makeButton("Add Image", "Upload one or more image keyframes", () => this.fileInput.click(), ICONS.upload);
     this.toolbar.appendChild(addImages);
-    const addVideo = makeButton("Add Video", "Add a standard video guide to the selected tile", () => this.mediaInputs.video.click());
-    const addICVideo = makeButton("Add IC Video", "Add an IC-LoRA video or image guide to the selected tile", () => this.mediaInputs.ic.click());
+    const addVideo = makeButton("Add Video", "Add a standard video guide to the selected tile", () => this.mediaInputs.video.click(), ICONS.video);
+    const addICVideo = makeButton("Add IC Video", "Add an IC-LoRA video or image guide to the selected tile", () => this.mediaInputs.ic.click(), ICONS.motion);
     this.toolbar.appendChild(addVideo);
     this.toolbar.appendChild(addICVideo);
-    const addAudio = makeButton("Add Audio", "Add a custom audio segment", () => this.mediaInputs.audio.click());
+    const addAudio = makeButton("Add Audio", "Add a custom audio segment", () => this.mediaInputs.audio.click(), ICONS.audio);
     this.toolbar.appendChild(addAudio);
     // Retake skips the normal guide path, so its editing entry points are inert.
     for (const button of [addImages, addVideo, addICVideo, addAudio]) {
       button.disabled = retakeActive;
       if (retakeActive) button.title = "Disabled while Retake mode is active";
     }
+    const deleteButton = makeIconButton("Delete", "Delete the selected keyframe", () => {
+      if (this.selectedKeyframe === null) return;
+      this._deleteKeyframe(this.selectedKeyframe);
+      this._commit();
+      this.refresh();
+    }, ICONS.trash, true);
+    deleteButton.disabled = retakeActive || this.selectedKeyframe === null;
+    this.toolbar.appendChild(deleteButton);
+
     const retakeButton = makeButton(
-      this.timeline.retake_mode ? "Clear Retake" : "Retake mode",
+      "Retake Mode (BETA)",
       this.timeline.retake_mode ? "Remove the retake guide" : "Add a retake video to the selected tile",
       () => {
         if (this.timeline.retake_mode) {
@@ -863,33 +912,36 @@ class LoopingDirectorEditor {
           this.mediaInputs.retake.click();
         }
       },
+      ICONS.retake,
     );
+    if (retakeActive) retakeButton.classList.add("toggle-on");
     this.toolbar.appendChild(retakeButton);
-    this.toolbar.appendChild(makeButton("Frames", "Display keyframe labels as frame numbers", () => {
-      this.displayMode = "frames";
-      this.node._loopingDirectorDisplayMode = this.displayMode;
-      this.node.properties = this.node.properties || {};
-      this.node.properties.looping_director_display_mode = this.displayMode;
-      this.refresh();
-    }));
-    this.toolbar.appendChild(makeButton("Seconds", "Display keyframe labels as seconds", () => {
-      this.displayMode = "seconds";
-      this.node._loopingDirectorDisplayMode = this.displayMode;
-      this.node.properties = this.node.properties || {};
-      this.node.properties.looping_director_display_mode = this.displayMode;
-      this.refresh();
-    }));
-    this.toolbar.appendChild(makeButton("Delete selected", "Delete the selected keyframe", () => {
-      if (this.selectedKeyframe === null) return;
-      this._deleteKeyframe(this.selectedKeyframe);
-      this._commit();
-      this.refresh();
-    }));
+
+    const units = document.createElement("div");
+    units.className = "pr-segmented-control";
+    for (const mode of ["frames", "seconds"]) {
+      // A div, like the Director's own segmented controls: .pr-segment carries no
+      // button reset, so a <button> would keep its default chrome.
+      const segment = document.createElement("div");
+      segment.className = `pr-segment${this.displayMode === mode ? " active" : ""}`;
+      segment.textContent = mode === "frames" ? "Frames" : "Seconds";
+      segment.title = `Display keyframe labels as ${mode === "frames" ? "frame numbers" : "seconds"}`;
+      segment.addEventListener("click", () => {
+        this.displayMode = mode;
+        this.node._loopingDirectorDisplayMode = mode;
+        this.node.properties = this.node.properties || {};
+        this.node.properties.looping_director_display_mode = mode;
+        this.refresh();
+      });
+      units.appendChild(segment);
+    }
+    this.toolbar.appendChild(units);
+
     const referenceLabel = document.createElement("label");
     referenceLabel.className = "ld-status";
     referenceLabel.textContent = "External reference";
     const referenceSelect = document.createElement("select");
-    referenceSelect.className = "ld-button";
+    referenceSelect.className = "pr-settings-select";
     this.timeline.keyframes.forEach((keyframe, index) => {
       const option = document.createElement("option");
       option.value = String(index);
@@ -912,15 +964,28 @@ class LoopingDirectorEditor {
     });
     this.toolbar.appendChild(referenceLabel);
     this.toolbar.appendChild(referenceSelect);
-    const selected = document.createElement("span");
-    selected.className = "ld-status";
-    selected.textContent = `Selected ${frameLabel(this.selectedFrame, this.node)}`;
-    this.toolbar.appendChild(selected);
     if (this.node._loopingDirectorWarning) {
       const warning = document.createElement("span");
       warning.className = "ld-status ld-warning";
       warning.textContent = this.node._loopingDirectorWarning;
       this.toolbar.appendChild(warning);
+    }
+    this._renderReadout();
+  }
+
+  _renderReadout() {
+    const schedule = loopingSchedule(this.node);
+    const tile = Math.max(0, schedule.chunks.findIndex(
+      chunk => this.selectedFrame >= chunk.startFrame && this.selectedFrame < chunk.endFrame,
+    ));
+    const chunk = schedule.chunks[tile];
+    if (this.boundsDisplay) {
+      this.boundsDisplay.textContent = chunk
+        ? `Tile ${tile} · ${frameLabel(chunk.startFrame, this.node)}–${frameLabel(Math.max(chunk.startFrame, chunk.endFrame - 1), this.node)}`
+        : "";
+    }
+    if (this.timecodeDisplay) {
+      this.timecodeDisplay.textContent = frameLabel(this.selectedFrame, this.node);
     }
   }
 
@@ -1015,6 +1080,62 @@ class LoopingDirectorEditor {
       });
       this.strip.appendChild(marker);
     });
+
+    this._renderEmptySlots(schedule, totalFrames, retakeActive);
+  }
+
+  // One slot per tile: frame 0, then the middle of each tile overlap. Slots are derived
+  // from the current schedule, so changing the duration re-lays them out. They are
+  // presentation only — an empty slot is never written to the timeline, so no keyframe
+  // is used at that index until an image is dropped on it.
+  _renderEmptySlots(schedule, totalFrames, retakeActive) {
+    if (retakeActive) return;
+    const occupied = new Set();
+    for (const keyframe of this.timeline.keyframes) {
+      occupied.add(Number(keyframe.frame));
+      const slot = Number(keyframe.defaultSlot);
+      if (Number.isInteger(slot)) occupied.add(schedule.referenceFrames[slot]);
+    }
+    schedule.referenceFrames.forEach((frame, slot) => {
+      if (occupied.has(frame)) return;
+      const marker = document.createElement("div");
+      marker.className = "ld-frame-marker empty";
+      const position = Math.max(0, Math.min(100, frame / Math.max(1, totalFrames - 1) * 100));
+      marker.style.left = `${position}%`;
+      marker.style.transform = position <= 4 ? "translateX(2px)" : position >= 96 ? "translateX(-100%)" : "translateX(-50%)";
+      marker.title = `Empty slot at ${frameLabel(frame, this.node)} — click or drop an image to use a keyframe here`;
+
+      const drop = document.createElement("div");
+      drop.className = "ld-slot-drop";
+      drop.innerHTML = ICONS.plus;
+      marker.appendChild(drop);
+      const label = document.createElement("span");
+      label.textContent = `${slot === 0 ? "start" : `tile ${slot}`} · ${frameLabel(frame, this.node)}`;
+      marker.appendChild(label);
+
+      marker.addEventListener("click", event => {
+        event.stopPropagation();
+        this.selectedFrame = frame;
+        this._pendingSlot = slot;
+        this.fileInput.click();
+      });
+      marker.addEventListener("dragover", event => {
+        if (Array.from(event.dataTransfer?.items || []).some(item => item.kind === "file")) {
+          event.preventDefault();
+          event.stopPropagation();
+          marker.classList.add("dragover");
+        }
+      });
+      marker.addEventListener("dragleave", () => marker.classList.remove("dragover"));
+      marker.addEventListener("drop", async event => {
+        event.preventDefault();
+        event.stopPropagation();
+        marker.classList.remove("dragover");
+        this._pendingSlot = slot;
+        await this._uploadFiles(Array.from(event.dataTransfer?.files || []));
+      });
+      this.strip.appendChild(marker);
+    });
   }
 
   _renderPrompts() {
@@ -1023,26 +1144,37 @@ class LoopingDirectorEditor {
     this._ensurePromptCount(count);
     this.prompts.innerHTML = "";
     for (let index = 0; index < count; index += 1) {
-      const tile = document.createElement("div");
-      tile.className = "ld-tile";
-      const title = document.createElement("div");
-      title.className = "ld-tile-title";
-      title.textContent = `Tile ${index}`;
-      const range = document.createElement("span");
-      range.className = "ld-tile-range";
       const chunk = chunks[index];
-      range.textContent = `#${index + 1}/${count} · ${frameLabel(chunk.startFrame, this.node)}–${frameLabel(Math.max(chunk.startFrame, chunk.endFrame - 1), this.node)}`;
-      title.appendChild(range);
-      tile.appendChild(title);
+      const cell = document.createElement("div");
+      cell.className = "ld-prompt-cell";
+      const wrapper = document.createElement("div");
+      wrapper.className = "pr-prompt-wrapper";
+      const label = document.createElement("div");
+      label.className = "pr-prompt-label";
+      label.textContent = `Tile ${index} · ${frameLabel(chunk.startFrame, this.node)}–${frameLabel(Math.max(chunk.startFrame, chunk.endFrame - 1), this.node)}`;
+      wrapper.appendChild(label);
       const textarea = document.createElement("textarea");
+      textarea.className = "pr-prompt-area";
       textarea.placeholder = DEFAULT_TILE_PROMPT;
       textarea.value = this.timeline.tile_prompts[index] || "";
       textarea.addEventListener("input", event => {
         this.timeline.tile_prompts[index] = event.target.value;
         this._commit();
       });
-      tile.appendChild(textarea);
-      this.prompts.appendChild(tile);
+      // Matches the Director: the focused prompt stays lit and its siblings dim.
+      textarea.addEventListener("focus", () => {
+        wrapper.classList.add("focus-active");
+        this.container.classList.add("has-focus");
+        this.selectedFrame = snapFrame(chunk.startFrame, frameCount(this.node));
+        this._renderReadout();
+      });
+      textarea.addEventListener("blur", () => {
+        wrapper.classList.remove("focus-active");
+        this.container.classList.remove("has-focus");
+      });
+      wrapper.appendChild(textarea);
+      cell.appendChild(wrapper);
+      this.prompts.appendChild(cell);
     }
   }
 
@@ -1087,6 +1219,10 @@ class LoopingDirectorEditor {
   async _uploadFiles(files) {
     const schedule = loopingSchedule(this.node);
     const totalFrames = schedule.frameCount;
+    // A slot the user clicked or dropped onto takes the first image; the rest fall
+    // through to the normal next-free-slot search.
+    let pendingSlot = Number.isInteger(this._pendingSlot) ? this._pendingSlot : null;
+    this._pendingSlot = null;
     const usedSlots = new Set(
       this.timeline.keyframes
         .map(keyframe => Number(keyframe.defaultSlot))
@@ -1111,7 +1247,10 @@ class LoopingDirectorEditor {
       const subfolder = data.subfolder || "";
       if (!filename) continue;
       const imageFile = subfolder ? `${subfolder}/${filename}` : filename;
-      let slot = schedule.referenceFrames.findIndex((_, candidate) => !usedSlots.has(candidate));
+      let slot = pendingSlot !== null && !usedSlots.has(pendingSlot)
+        ? pendingSlot
+        : schedule.referenceFrames.findIndex((_, candidate) => !usedSlots.has(candidate));
+      pendingSlot = null;
       if (slot < 0) slot = schedule.referenceFrames.length;
       const frame = schedule.referenceFrames[slot] ?? snapFrame(this.selectedFrame + index * TIME_SCALE, totalFrames);
       this.timeline.keyframes.push({
