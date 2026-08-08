@@ -111,14 +111,23 @@ def _temporal_chunks(frame_count, temporal_tile_size, temporal_overlap):
 
 
 def _default_reference_frames(frame_count, temporal_tile_size, temporal_overlap):
+    """Default keyframe positions: the start frame, then the end of every tile.
+
+    A tile is generated "to last image": it starts from the trailing overlap it
+    inherits from the previous tile and is steered toward the keyframe sitting on
+    its own last frame. The base looping sampler reassigns a keyframe that lands in
+    a leading overlap to the earlier tile, so a tile-end keyframe is owned by the
+    tile it terminates rather than by the one that inherits it.
+    """
     chunks = _temporal_chunks(frame_count, temporal_tile_size, temporal_overlap)
     final_index = ((frame_count - 1) // LTX_TIME_SCALE) * LTX_TIME_SCALE
-    margin = temporal_overlap // 2
     indices = [0]
     tile_stride = temporal_tile_size - temporal_overlap
     for tile_index in range(len(chunks)):
+        # The tile spans [start, start + tile_size); its last aligned frame is one
+        # latent step back from that exclusive end.
         reference_index = min(
-            tile_index * tile_stride + temporal_tile_size - margin,
+            tile_index * tile_stride + temporal_tile_size - LTX_TIME_SCALE,
             final_index,
         )
         reference_index -= reference_index % LTX_TIME_SCALE

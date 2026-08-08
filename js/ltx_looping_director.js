@@ -174,10 +174,13 @@ function loopingSchedule(node) {
     };
   });
   const finalFrame = Math.floor((frameCount - 1) / TIME_SCALE) * TIME_SCALE;
-  const margin = Math.floor(overlap / 2);
+  // Default keyframe positions: the start frame, then the end of every tile. Each
+  // tile is generated "to last image" — it starts from the trailing overlap it
+  // inherits and is steered toward the keyframe on its own last frame. Must match
+  // _default_reference_frames in ltx_looping_director.py.
   const referenceFrames = [0];
   for (let index = 0; index < count; index += 1) {
-    let frame = Math.min(index * (tileSize - overlap) + tileSize - margin, finalFrame);
+    let frame = Math.min(index * (tileSize - overlap) + tileSize - TIME_SCALE, finalFrame);
     frame -= frame % TIME_SCALE;
     if (!referenceFrames.includes(frame)) referenceFrames.push(frame);
   }
@@ -1098,7 +1101,8 @@ class LoopingDirectorEditor {
     ctx.fillText("+", x + w / 2, top + h / 2 - 6);
     ctx.fillStyle = "#777";
     ctx.font = "9px sans-serif";
-    ctx.fillText(item.slot === 0 ? "start" : `tile ${item.slot}`, x + w / 2, top + h - 20);
+    // Slot 0 is the start image; slot k terminates tile k-1.
+    ctx.fillText(item.slot === 0 ? "start" : `tile ${item.slot - 1} end`, x + w / 2, top + h - 20);
     ctx.fillText(frameLabel(item.frame, this.node), x + w / 2, top + h - 8);
     ctx.restore();
   }

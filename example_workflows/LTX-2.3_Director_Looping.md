@@ -16,11 +16,15 @@ custom node by default; pass `--base` when the repositories are installed elsewh
 - the node derives the valid LTX frame count, tile size, and overlap and publishes
   those values to both looping samplers;
 - the editor exposes exactly one tile prompt per temporal tile;
-- new images can be dropped onto the timeline or added with **Add images**;
-- new images are placed at frame 0 and then in the middle of each tile overlap,
-  where the looping sampler treats them as tile-end keyframes;
-- dragging a marker makes its frame index manual, so it can be moved left of the tile
-  end or anywhere else on the 8-frame grid;
+- new images can be dropped onto the timeline or added with **Add Image**;
+- the timeline is prefilled with one empty slot at frame 0 and one on the last frame
+  of every tile. A slot left empty is not a keyframe: nothing is emitted at that
+  index;
+- a tile-end keyframe makes that tile a "to last image" generation. The tile starts
+  from the trailing overlap it inherits from the previous tile and is steered toward
+  its own end keyframe, which the next tile then inherits as its start reference;
+- dragging a marker makes its frame index manual, so it can be moved anywhere else on
+  the 8-frame grid;
 - `target_height` is the only output-size control. The frame-0 `start_image` supplies
   the aspect ratio and the final width is calculated and aligned automatically.
 

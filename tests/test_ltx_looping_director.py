@@ -222,7 +222,38 @@ class TestLTXLoopingDirector(TestCase):
         )
         self.assertEqual((frame_count, tile_size, overlap), (1145, 240, 48))
         self.assertEqual(len(chunks), 6)
-        self.assertEqual(references, [0, 216, 408, 600, 792, 984, 1144])
+        self.assertEqual(references, [0, 232, 424, 616, 808, 1000, 1144])
+
+    def test_default_references_sit_on_each_tile_end(self):
+        """Each tile is generated "to last image", so its keyframe terminates it."""
+        frame_count, tile_size, overlap, chunks, references = self.module._calculate_schedule(
+            24, 48, 10, 2
+        )
+        self.assertEqual(references[0], 0, "the first keyframe is the start image")
+        final_index = ((frame_count - 1) // 8) * 8
+        for tile_index, (latent_start, latent_end) in enumerate(chunks):
+            expected = min(latent_end * 8 - 8, final_index)
+            self.assertEqual(
+                references[tile_index + 1],
+                expected,
+                f"tile {tile_index} keyframe must sit on its last aligned frame",
+            )
+            # The keyframe belongs to the tile it ends, not the one inheriting the overlap.
+            self.assertTrue(latent_start * 8 <= references[tile_index + 1] < latent_end * 8)
+
+    def test_tile_end_references_land_inside_the_next_tiles_leading_overlap(self):
+        """The next tile inherits that frame as its start reference."""
+        _, tile_size, overlap, chunks, references = self.module._calculate_schedule(
+            24, 48, 10, 2
+        )
+        for tile_index in range(len(chunks) - 1):
+            reference = references[tile_index + 1]
+            next_start = chunks[tile_index + 1][0] * 8
+            next_overlap_end = next_start + overlap
+            self.assertTrue(
+                next_start <= reference < next_overlap_end,
+                f"tile {tile_index} end must fall in tile {tile_index + 1}'s leading overlap",
+            )
 
     def test_schema_default_has_one_prompt_per_sampler_tile(self):
         schema = self.director.define_schema()
