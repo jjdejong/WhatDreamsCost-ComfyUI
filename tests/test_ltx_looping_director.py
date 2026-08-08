@@ -539,6 +539,62 @@ class TestLTXLoopingDirector(TestCase):
         self.assertIn("MarkdownNote", [node["type"] for node in workflow["nodes"]])
         self.assertNotIn("Power Lora Loader (rgthree)", [node["type"] for node in workflow["nodes"]])
 
+    def test_generated_sampler_widget_values_align_with_the_schema(self):
+        """widgets_values must line up slot-for-slot with the node's widget inputs."""
+        sampler_cls = self._sampler_module().LTXLoopingDirectorSampler
+        v1 = sampler_cls.INPUT_TYPES()
+        order = list(v1.get("required", {}).keys()) + list(v1.get("optional", {}).keys())
+        specs = {**v1.get("required", {}), **v1.get("optional", {})}
+
+        def is_widget(spec):
+            kind = spec[0]
+            return isinstance(kind, list) or kind in {"INT", "FLOAT", "STRING", "BOOLEAN", "COMBO"}
+
+        schema_widgets = [name for name in order if is_widget(specs[name])]
+        with open(ROOT / "example_workflows" / "LTX-2.3_Director_Looping.json", encoding="utf-8") as stream:
+            workflow = json.load(stream)
+        sampler = next(node for node in workflow["nodes"] if node["type"] == "LTXLoopingDirectorSampler")
+        self.assertEqual(
+            len(sampler["widgets_values"]),
+            len(schema_widgets),
+            "widgets_values length must match the number of widget inputs",
+        )
+        by_name = dict(zip(schema_widgets, sampler["widgets_values"]))
+        # Spot-check values whose type makes a shift unmistakable.
+        self.assertEqual(by_name["pass_count"], 2)
+        self.assertEqual(by_name["execution_mode"], "full")
+        self.assertEqual(by_name["ic_lora_name"], "None")
+        self.assertEqual(by_name["cond_image_crf"], 30)
+        self.assertEqual(by_name["checkpoint_policy"], "off")
+        self.assertEqual(by_name["checkpoint_prefix"], "ltx_looping_director")
+        for name in ("pass1_seed_offsets", "pass2_seed_offsets"):
+            self.assertEqual(by_name[name], "0")
+        for name in ("pass1_guiding_start_step", "pass2_guiding_start_step"):
+            self.assertEqual(by_name[name], 0)
+
+    def test_transformer_widget_order_matches_the_schema(self):
+        """The transformer derives widget order rather than hand-maintaining it."""
+        sys.path.insert(0, str(ROOT / "example_workflows"))
+        try:
+            transformer = importlib.import_module("transform_to_director_looping")
+        finally:
+            sys.path.pop(0)
+        sampler_cls = self._sampler_module().LTXLoopingDirectorSampler
+        v1 = sampler_cls.INPUT_TYPES()
+        order = list(v1.get("required", {}).keys()) + list(v1.get("optional", {}).keys())
+        specs = {**v1.get("required", {}), **v1.get("optional", {})}
+        schema_widgets = [
+            name for name in order
+            if isinstance(specs[name][0], list)
+            or specs[name][0] in {"INT", "FLOAT", "STRING", "BOOLEAN", "COMBO"}
+        ]
+        self.assertEqual(transformer.sampler_widget_names(), schema_widgets)
+        # The declared input list must also match the schema, name for name.
+        self.assertEqual(
+            [name for name, _, _ in transformer.SAMPLER_INPUTS],
+            [item.id for item in sampler_cls.define_schema().inputs],
+        )
+
     def test_generated_workflow_keeps_preprocess_on_the_conditioning_image_path(self):
         sampler_names = [item.id for item in self._sampler_module().LTXLoopingDirectorSampler.define_schema().inputs]
         with open(ROOT / "example_workflows" / "LTX-2.3_Director_Looping.json", encoding="utf-8") as stream:

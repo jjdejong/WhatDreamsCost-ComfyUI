@@ -393,6 +393,7 @@ def _process_temporal_chunks(self, tile_config, sampling_config, model_config,
     """Run the temporal loop with Director-owned tile guides and AV masks."""
     ltx = _ltx_looping_module()
     select_latents = ltx.LTXVSelectLatents()
+    cond_image_crf = int(getattr(self, "_director_cond_image_crf", 30))
     tile_guides = tile_config.tile_guiding_latents.get("_director_tile_guides", []) if tile_config.tile_guiding_latents else []
     # ``tile_guiding_latents`` doubles as the carrier for the Director tile guides, so
     # only treat its samples as a legacy guiding latent when one was actually connected
@@ -599,7 +600,7 @@ def _process_temporal_chunks(self, tile_config, sampling_config, model_config,
                     optional_cond_images=this_chunk_keyframes,
                     optional_cond_indices=keyframe_indices,
                     crop="center",
-                    crf=30,
+                    crf=cond_image_crf,
                     strength=sampling_config.cond_image_strength,
                     optional_negative_index_latents=tile_config.tile_negative_index_latents,
                     optional_negative_index=sampling_config.optional_negative_index,
@@ -1261,6 +1262,19 @@ class LTXLoopingDirectorSampler(io.ComfyNode):
                 io.Latent.Input("pass2_latent", optional=True),
                 io.Latent.Input("external_pass1_video_latent", optional=True),
                 io.Latent.Input("external_pass1_audio_latent", optional=True),
+                io.Int.Input(
+                    "cond_image_crf",
+                    default=30,
+                    min=0,
+                    max=100,
+                    step=1,
+                    optional=True,
+                    tooltip=(
+                        "Compression applied to the conditioning images before they are "
+                        "encoded, shared by both passes. Only the first temporal tile of "
+                        "each pass takes conditioning images through this path."
+                    ),
+                ),
                 io.Combo.Input("checkpoint_policy", options=["off", "pass_boundaries", "every_tile"], default="off", optional=True),
                 io.Combo.Input("resume", options=["off", "latest"], default="off", optional=True),
                 io.String.Input("checkpoint_prefix", default="ltx_looping_director", optional=True),
@@ -1320,7 +1334,8 @@ class LTXLoopingDirectorSampler(io.ComfyNode):
                   ic_lora_strength, legacy_guiding_latent, negative_index_latent,
                   negative_index_strength, normalizing_latent, seed_offsets,
                   checkpoint_policy, checkpoint_prefix, resume_chunks=None,
-                  checkpoint_fingerprint=None, checkpoint_generation=None):
+                  checkpoint_fingerprint=None, checkpoint_generation=None,
+                  cond_image_crf=30):
         if noise is None or sampler is None or sigmas is None or guider is None:
             raise ValueError(f"LTXLoopingDirectorSampler: pass {pass_index} sampler inputs are required")
         if checkpoint_policy != "off" and not checkpoint_generation:
@@ -1372,6 +1387,7 @@ class LTXLoopingDirectorSampler(io.ComfyNode):
         ltx_sampler._director_original_extract = ltx_sampler._extract_spatial_tile
         ltx_sampler._director_tile_guides = guides if has_guides else None
         ltx_sampler._director_legacy_guiding = legacy_guiding_latent is not None
+        ltx_sampler._director_cond_image_crf = int(cond_image_crf)
         ltx_sampler._extract_spatial_tile = MethodType(_extract_spatial_tile, ltx_sampler)
         ltx_sampler._process_temporal_chunks = MethodType(_process_temporal_chunks, ltx_sampler)
         ltx_sampler._save_chunk_checkpoint = MethodType(_save_checkpoint, ltx_sampler)
@@ -1436,7 +1452,7 @@ class LTXLoopingDirectorSampler(io.ComfyNode):
                 pass2_negative_index_latent=None, pass2_negative_index_strength=1.0,
                 pass2_normalizing_latent=None, pass2_seed_offsets="0",
                 pass1_latent=None, pass2_latent=None, checkpoint_policy="off",
-                resume="off", checkpoint_prefix="ltx_looping_director",
+                resume="off", checkpoint_prefix="ltx_looping_director", cond_image_crf=30,
                 external_pass1_video_latent=None, external_pass1_audio_latent=None):
         frame_count, chunks, media = cls._validate_plan(director_plan)
         if audio_vae is None:
@@ -1511,6 +1527,7 @@ class LTXLoopingDirectorSampler(io.ComfyNode):
                     "pass2": [pass2_guiding_strength, pass2_overlap_cond_strength, pass2_cond_image_strength, pass2_adain_factor, pass2_guiding_start_step, pass2_guiding_end_step, pass2_negative_index_strength, pass2_seed_offsets],
                     "ic_lora_name": ic_lora_name,
                     "ic_lora_strength": ic_lora_strength,
+                    "cond_image_crf": cond_image_crf,
                 },
                 {
                     "model": _component_identity(model),
@@ -1659,7 +1676,7 @@ class LTXLoopingDirectorSampler(io.ComfyNode):
                 ic_lora_name, ic_lora_strength, pass1_guiding_latent,
                 pass1_negative_index_latent, pass1_negative_index_strength,
                 pass1_normalizing_latent, pass1_seed_offsets, checkpoint_policy, prefix,
-                resume_chunks_for(1), checkpoint_fingerprint, generation,
+                resume_chunks_for(1), checkpoint_fingerprint, generation, cond_image_crf,
             )
             if checkpoint_active:
                 _save_pass_snapshot(prefix, generation, 1, pass1, checkpoint_fingerprint)
@@ -1713,7 +1730,7 @@ class LTXLoopingDirectorSampler(io.ComfyNode):
             ic_lora_name, ic_lora_strength, pass2_guiding_latent,
             pass2_negative_index_latent, pass2_negative_index_strength,
             pass2_normalizing_latent, pass2_seed_offsets, checkpoint_policy, prefix,
-            resume_chunks_for(2), checkpoint_fingerprint, generation,
+            resume_chunks_for(2), checkpoint_fingerprint, generation, cond_image_crf,
         )
         if checkpoint_active:
             _save_pass_snapshot(prefix, generation, 2, pass2, checkpoint_fingerprint)

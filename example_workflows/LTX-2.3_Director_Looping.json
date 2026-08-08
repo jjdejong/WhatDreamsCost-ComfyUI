@@ -1110,7 +1110,10 @@
         {
           "name": "cond_image_indices",
           "type": "STRING",
-          "link": 137
+          "link": 137,
+          "widget": {
+            "name": "cond_image_indices"
+          }
         },
         {
           "name": "model",
@@ -1431,6 +1434,14 @@
           "link": null
         },
         {
+          "name": "cond_image_crf",
+          "type": "INT",
+          "link": null,
+          "widget": {
+            "name": "cond_image_crf"
+          }
+        },
+        {
           "name": "checkpoint_policy",
           "type": "COMBO",
           "link": null,
@@ -1485,6 +1496,7 @@
       "widgets_values": [
         2,
         "full",
+        "",
         "None",
         1.0,
         1.0,
@@ -1506,11 +1518,10 @@
         1,
         8,
         1.0,
-        1.0,
         "0",
         1.0,
-        1.0,
         "0",
+        30,
         "off",
         "off",
         "ltx_looping_director"

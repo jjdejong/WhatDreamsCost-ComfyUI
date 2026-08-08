@@ -46,6 +46,97 @@ def director_note(frame_rate, total_duration, tile_seconds, overlap_seconds, til
     )
 
 
+# The sampler's inputs in schema declaration order. Each entry is
+# (name, socket type, is_widget, default). ``widgets_values`` is derived from this
+# single source rather than hand-maintained: the previous hand-written array had
+# drifted out of alignment with the schema.
+SAMPLER_INPUTS_SPEC = [
+    ("director_plan", "LTX_LOOPING_DIRECTOR_PLAN", False, None),
+    ("per_tile_conditionings", "CONDITIONING", False, None),
+    ("cond_images", "IMAGE", False, None),
+    # Widget-typed but normally driven by a link; it still owns a widgets_values slot.
+    ("cond_image_indices", "STRING", True, ""),
+    ("model", "MODEL", False, None),
+    ("video_vae", "VAE", False, None),
+    ("audio_vae", "VAE", False, None),
+    ("latent_upscale_model", "LATENT_UPSCALE_MODEL", False, None),
+    ("pass1_noise", "NOISE", False, None),
+    ("pass1_sampler", "SAMPLER", False, None),
+    ("pass1_sigmas", "SIGMAS", False, None),
+    ("pass1_guider", "GUIDER", False, None),
+    ("pass2_noise", "NOISE", False, None),
+    ("pass2_sampler", "SAMPLER", False, None),
+    ("pass2_sigmas", "SIGMAS", False, None),
+    ("pass2_guider", "GUIDER", False, None),
+    ("pass_count", "COMBO", True, 2),
+    ("execution_mode", "COMBO", True, "full"),
+    ("ic_lora_name", "COMBO", True, "None"),
+    ("ic_lora_strength", "FLOAT", True, 1.0),
+    ("pass1_guiding_strength", "FLOAT", True, 1.0),
+    ("pass1_overlap_cond_strength", "FLOAT", True, 0.5),
+    ("pass1_cond_image_strength", "FLOAT", True, 1.0),
+    ("pass1_adain_factor", "FLOAT", True, 0.0),
+    ("pass1_guiding_start_step", "INT", True, 0),
+    ("pass1_guiding_end_step", "INT", True, 1000),
+    ("pass2_guiding_strength", "FLOAT", True, 1.0),
+    ("pass2_overlap_cond_strength", "FLOAT", True, 0.5),
+    ("pass2_cond_image_strength", "FLOAT", True, 1.0),
+    ("pass2_adain_factor", "FLOAT", True, 0.0),
+    ("pass2_guiding_start_step", "INT", True, 0),
+    ("pass2_guiding_end_step", "INT", True, 1000),
+    ("pass1_horizontal_tiles", "INT", True, 1),
+    ("pass1_vertical_tiles", "INT", True, 1),
+    ("pass1_spatial_overlap", "INT", True, 8),
+    ("pass2_horizontal_tiles", "INT", True, 1),
+    ("pass2_vertical_tiles", "INT", True, 1),
+    ("pass2_spatial_overlap", "INT", True, 8),
+    ("pass1_guiding_latent", "LATENT", False, None),
+    ("pass1_negative_index_latent", "LATENT", False, None),
+    ("pass1_negative_index_strength", "FLOAT", True, 1.0),
+    ("pass1_normalizing_latent", "LATENT", False, None),
+    ("pass1_seed_offsets", "STRING", True, "0"),
+    ("pass2_guiding_latent", "LATENT", False, None),
+    ("pass2_negative_index_latent", "LATENT", False, None),
+    ("pass2_negative_index_strength", "FLOAT", True, 1.0),
+    ("pass2_normalizing_latent", "LATENT", False, None),
+    ("pass2_seed_offsets", "STRING", True, "0"),
+    ("pass1_latent", "LATENT", False, None),
+    ("pass2_latent", "LATENT", False, None),
+    ("external_pass1_video_latent", "LATENT", False, None),
+    ("external_pass1_audio_latent", "LATENT", False, None),
+    ("cond_image_crf", "INT", True, 30),
+    ("checkpoint_policy", "COMBO", True, "off"),
+    ("resume", "COMBO", True, "off"),
+    ("checkpoint_prefix", "STRING", True, "ltx_looping_director"),
+]
+
+# Inputs the node schema declares as required. The V1 serialization groups required
+# inputs before optional ones, so widget order is not plain declaration order.
+SAMPLER_REQUIRED_INPUTS = {
+    "director_plan", "per_tile_conditionings", "model", "video_vae", "audio_vae",
+    "pass1_noise", "pass1_sampler", "pass1_sigmas", "pass1_guider",
+    "pass_count", "execution_mode",
+}
+
+SAMPLER_INPUTS = [
+    (name, typ, {"widget": {"name": name}} if is_widget else {})
+    for name, typ, is_widget, _ in SAMPLER_INPUTS_SPEC
+]
+
+
+def sampler_widget_names():
+    """Widget names in V1 serialization order: required widgets, then optional ones."""
+    widgets = [(name, name in SAMPLER_REQUIRED_INPUTS)
+               for name, _, is_widget, _ in SAMPLER_INPUTS_SPEC if is_widget]
+    return [name for name, required in widgets if required] + \
+           [name for name, required in widgets if not required]
+
+
+def sampler_widget_values():
+    defaults = {name: default for name, _, is_widget, default in SAMPLER_INPUTS_SPEC if is_widget}
+    return [defaults[name] for name in sampler_widget_names()]
+
+
 def aligned_frames(seconds, frame_rate, minimum):
     return max(minimum, round(seconds * frame_rate / TIME_SCALE) * TIME_SCALE)
 
@@ -249,49 +340,14 @@ def main(argv=None):
         "has_serialized_properties": True,
     })
 
-    sampler_inputs = [
-        ("director_plan", "LTX_LOOPING_DIRECTOR_PLAN", {}),
-        ("per_tile_conditionings", "CONDITIONING", {}), ("cond_images", "IMAGE", {}),
-        ("cond_image_indices", "STRING", {}), ("model", "MODEL", {}), ("video_vae", "VAE", {}),
-        ("audio_vae", "VAE", {}), ("latent_upscale_model", "LATENT_UPSCALE_MODEL", {}),
-        ("pass1_noise", "NOISE", {}), ("pass1_sampler", "SAMPLER", {}), ("pass1_sigmas", "SIGMAS", {}), ("pass1_guider", "GUIDER", {}),
-        ("pass2_noise", "NOISE", {}), ("pass2_sampler", "SAMPLER", {}), ("pass2_sigmas", "SIGMAS", {}), ("pass2_guider", "GUIDER", {}),
-        ("pass_count", "COMBO", {"widget": {"name": "pass_count"}}),
-        ("execution_mode", "COMBO", {"widget": {"name": "execution_mode"}}),
-        ("ic_lora_name", "COMBO", {"widget": {"name": "ic_lora_name"}}),
-        ("ic_lora_strength", "FLOAT", {"widget": {"name": "ic_lora_strength"}}),
-    ]
-    for name, default in (
-        ("pass1_guiding_strength", 1.0), ("pass1_overlap_cond_strength", 0.5), ("pass1_cond_image_strength", 1.0),
-        ("pass1_adain_factor", 0.0), ("pass1_guiding_start_step", 0), ("pass1_guiding_end_step", 1000),
-        ("pass2_guiding_strength", 1.0), ("pass2_overlap_cond_strength", 0.5), ("pass2_cond_image_strength", 1.0),
-        ("pass2_adain_factor", 0.0), ("pass2_guiding_start_step", 0), ("pass2_guiding_end_step", 1000),
-        ("pass1_horizontal_tiles", 1), ("pass1_vertical_tiles", 1), ("pass1_spatial_overlap", 8),
-        ("pass2_horizontal_tiles", 1), ("pass2_vertical_tiles", 1), ("pass2_spatial_overlap", 8),
-    ):
-        typ = "INT" if isinstance(default, int) else "FLOAT"
-        sampler_inputs.append((name, typ, {"widget": {"name": name}}))
-    sampler_inputs.extend([
-        ("pass1_guiding_latent", "LATENT", {}), ("pass1_negative_index_latent", "LATENT", {}),
-        ("pass1_negative_index_strength", "FLOAT", {"widget": {"name": "pass1_negative_index_strength"}}),
-        ("pass1_normalizing_latent", "LATENT", {}), ("pass1_seed_offsets", "STRING", {"widget": {"name": "pass1_seed_offsets"}}),
-        ("pass2_guiding_latent", "LATENT", {}), ("pass2_negative_index_latent", "LATENT", {}),
-        ("pass2_negative_index_strength", "FLOAT", {"widget": {"name": "pass2_negative_index_strength"}}),
-        ("pass2_normalizing_latent", "LATENT", {}), ("pass2_seed_offsets", "STRING", {"widget": {"name": "pass2_seed_offsets"}}),
-        ("pass1_latent", "LATENT", {}), ("pass2_latent", "LATENT", {}),
-        ("external_pass1_video_latent", "LATENT", {}),
-        ("external_pass1_audio_latent", "LATENT", {}),
-        ("checkpoint_policy", "COMBO", {"widget": {"name": "checkpoint_policy"}}),
-        ("resume", "COMBO", {"widget": {"name": "resume"}}),
-        ("checkpoint_prefix", "STRING", {"widget": {"name": "checkpoint_prefix"}}),
-    ])
+    sampler_inputs = [(name, typ, dict(extra)) for name, typ, extra in SAMPLER_INPUTS]
     sampler = _node(
         LOOPING_SAMPLER_ID,
         "LTXLoopingDirectorSampler",
         "LTX Looping Director — 1/2 Pass",
         sampler_inputs,
         [("av_latent", "LATENT"), ("video_latent", "LATENT"), ("audio_latent", "LATENT")],
-        widgets=[2, "full", "None", 1.0, 1.0, 0.5, 1.0, 0.0, 0, 1000, 1.0, 0.5, 1.0, 0.0, 0, 1000, 1, 1, 8, 1, 1, 8, 1.0, 1.0, "0", 1.0, 1.0, "0", "off", "off", "ltx_looping_director"],
+        widgets=sampler_widget_values(),
         pos=[2500, 500],
         size=[560, 1100],
     )
