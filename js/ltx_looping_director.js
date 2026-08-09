@@ -462,6 +462,12 @@ class LoopingDirectorEditor {
       const rect = this.canvas.getBoundingClientRect();
       this._onCanvasPointer(event.clientX - rect.left, event.clientY - rect.top, event);
     });
+    this.canvas.addEventListener("keydown", event => {
+      if (event.key !== "Delete" && event.key !== "Backspace") return;
+      if (!this.selection) return;
+      event.preventDefault();
+      this._deleteSelection();
+    });
     this.viewport.addEventListener("dragover", event => {
       if (Array.from(event.dataTransfer?.items || []).some(item => item.kind === "file")) {
         event.preventDefault();
@@ -1009,7 +1015,8 @@ class LoopingDirectorEditor {
 
   _closeButtonRect(item) {
     const [top] = this._trackBounds("main");
-    return { x: item.x + item.w - 20, y: top + 4, w: 16, h: 16 };
+    const size = 20;
+    return { x: item.x + item.w - size - 4, y: top + 5, w: size, h: size };
   }
 
   _hitTest(x, y) {
@@ -1020,9 +1027,11 @@ class LoopingDirectorEditor {
       : "audio";
     if (!track) return null;
     const candidates = items.filter(item => item.track === track && x >= item.x && x <= item.x + item.w);
-    // Later entries win where spans touch, so the left border of the next block is
-    // always grabbable.
-    const hit = candidates[candidates.length - 1];
+    // Keyframes and slots sit on top of the MAIN track, so they take the click ahead
+    // of a Video guide spanning the same region. Later entries win among equals, so
+    // the left border of the next block is always grabbable.
+    const overlay = candidates.filter(item => item.kind === "keyframe" || item.kind === "slot");
+    const hit = overlay.length ? overlay[overlay.length - 1] : candidates[candidates.length - 1];
     if (hit) return hit;
     const band = items.find(item => item.kind === "band" && x >= item.x && x <= item.x + item.w);
     return band ? { kind: "band", tile: band.tile, track } : null;
@@ -1304,7 +1313,7 @@ class LoopingDirectorEditor {
 
     // Delete affordance, mirroring the Director's per-segment close button. The
     // protected reference keyframe shows none.
-    if (!protectedEntry && item.w > 46) {
+    if (!protectedEntry && item.w > 34) {
       const rect = this._closeButtonRect(item);
       ctx.fillStyle = "rgba(0,0,0,0.65)";
       ctx.fillRect(rect.x, rect.y, rect.w, rect.h);
@@ -1390,6 +1399,9 @@ class LoopingDirectorEditor {
   _deleteSelection() {
     if (!this.selection) return;
     if (this.selection.kind === "keyframe") {
+      // The external reference is the one keyframe that cannot go; point the
+      // reference elsewhere first.
+      if (this._isProtected(this.selection.index)) return;
       this._deleteKeyframe(this.selection.index);
     } else {
       this._removeMedia(this.selection.kind, this.selection.index);
