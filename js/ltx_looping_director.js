@@ -8,8 +8,6 @@ const BLOCK_HEIGHT = 160;
 const IC_TRACK_HEIGHT = 80;
 const AUDIO_TRACK_HEIGHT = 80;
 const SIDEBAR_WIDTH = 120;
-// Trailing margin so a block on the final frame is still a usable width.
-const END_PAD = 92;
 const CANVAS_HEIGHT = RULER_HEIGHT + BLOCK_HEIGHT + IC_TRACK_HEIGHT + AUDIO_TRACK_HEIGHT;
 const DEFAULT_FRAME_RATE = 24;
 const DEFAULT_TOTAL_DURATION = 48;
@@ -253,7 +251,7 @@ class LoopingDirectorEditor {
         /* Only looping-specific chrome lives here. The toolbar, controls group,
            prompt panels and readouts reuse the Director's own pr- classes, which
            ltx_director.js injects globally, so both editors are one visual system. */
-        .ld-editor { font-size: 12px; color: #e0e0e0; }
+        .ld-editor { font-size: 12px; color: #e0e0e0; max-height: 100%; overflow-y: auto; overflow-x: hidden; }
         .ld-timeline-layout { display: flex; flex-direction: row; width: 100%; border: 1px solid #111; border-radius: 6px; overflow: hidden; }
         .ld-sidebar { width: ${SIDEBAR_WIDTH}px; flex-shrink: 0; display: flex; flex-direction: column; border-right: 1px solid #111; box-sizing: border-box; background: #1e1e1e; user-select: none; }
         .ld-ruler-spacer { height: ${RULER_HEIGHT}px; width: 100%; border-bottom: 1px solid #111; background: #1e1e1e; box-sizing: border-box; flex-shrink: 0; }
@@ -414,21 +412,25 @@ class LoopingDirectorEditor {
     return Math.round(available * this.zoom);
   }
 
-  // A keyframe on the final frame still needs a block wide enough to see and click,
-  // so the timeline maps into the canvas minus a trailing margin.
-  _timelineWidth(width) {
-    return Math.max(1, width - END_PAD);
+  // The canvas covers the clip plus one virtual tile, so the keyframe that would feed
+  // a next tile has somewhere to live.
+  _mappedFrames() {
+    const schedule = loopingSchedule(this.node);
+    const stride = Math.max(TIME_SCALE, schedule.tileSize - schedule.overlap);
+    return Math.max(1, schedule.frameCount - 1 + stride);
   }
 
   _frameToX(frame, width) {
-    const total = Math.max(1, frameCount(this.node) - 1);
-    return (Math.max(0, Math.min(total, frame)) / total) * this._timelineWidth(width);
+    const total = this._mappedFrames();
+    return (Math.max(0, Math.min(total, frame)) / total) * width;
   }
 
   _xToFrame(x, width) {
-    const total = Math.max(1, frameCount(this.node) - 1);
-    const span = this._timelineWidth(width);
-    return snapFrame((Math.max(0, Math.min(span, x)) / span) * total, frameCount(this.node));
+    const total = this._mappedFrames();
+    const frames = frameCount(this.node);
+    const raw = (Math.max(0, Math.min(width, x)) / Math.max(1, width)) * total;
+    // The playhead and drags stay inside the real clip; the virtual tile is display only.
+    return snapFrame(Math.min(raw, frames - 1), frames);
   }
 
   _thumbnail(file) {
@@ -852,66 +854,109 @@ class LoopingDirectorEditor {
     return String(segment.imageFile || segment.audioFile || "media").split("/").pop();
   }
 
-  // Geometry of everything drawn on the canvas, shared by the renderer and hit
-  // testing so the two can never disagree.
+  // A keyframe steers the tile whose start it feeds. Keyframes sit on tile ends, and
+  // the next tile inherits that frame as its start reference, so the tile a keyframe
+  // influences is the number of tiles that have already ended by then. Frame 0 feeds
+  // tile 0; the keyframe on the last tile's end feeds a tile that does not exist,
+  // which is drawn as a virtual tile past the end of the clip.
+  _influencedTile(frame, schedule) {
+    let influenced = 0;
+    for (const chunk of schedule.chunks) {
+      if (chunk.endFrame - TIME_SCALE <= frame) influenced += 1;
+    }
+    return Math.min(influenced, schedule.chunks.length);
+  }
+
+  // The region a tile actually generates: tile 0 in full, later tiles after the
+  // leading overlap they inherit from the tile before. Owned regions tile the
+  // timeline without gaps or double cover, so one keyframe block per tile lays out
+  // cleanly even though the tiles themselves overlap.
+  _tileRegion(tile, schedule) {
+    const chunks = schedule.chunks;
+    const stride = Math.max(TIME_SCALE, schedule.tileSize - schedule.overlap);
+    if (tile < chunks.length) {
+      const chunk = chunks[tile];
+      return [tile ? chunk.startFrame + schedule.overlap : chunk.startFrame, chunk.endFrame];
+    }
+    // The virtual tile is notional, so it simply butts against the end of the clip
+    // and runs one stride further, filling the trailing part of the canvas.
+    return [schedule.frameCount - 1, schedule.frameCount - 1 + stride];
+  }
+
   // Geometry of everything drawn on the canvas, shared by the renderer and hit
   // testing so the two can never disagree.
   _layout() {
     const width = this._canvasWidth();
     const schedule = loopingSchedule(this.node);
     const retakeActive = Boolean(this.timeline.retake_mode);
-    const totalFrames = schedule.frameCount;
     const items = [];
+    const tileCountReal = schedule.chunks.length;
+
+    for (let tile = 0; tile <= tileCountReal; tile += 1) {
+      const [startFrame, endFrame] = this._tileRegion(tile, schedule);
+      const x = this._frameToX(startFrame, width);
+      items.push({
+        kind: "band",
+        tile,
+        virtual: tile >= tileCountReal,
+        x,
+        w: Math.max(1, this._frameToX(endFrame, width) - x),
+      });
+    }
 
     const tileSpan = tile => {
       const chunk = schedule.chunks[tile];
       if (!chunk) return null;
-      const owned = tile ? schedule.chunks[tile].startFrame + schedule.overlap : chunk.startFrame;
+      const owned = tile ? chunk.startFrame + schedule.overlap : chunk.startFrame;
       return { x: this._frameToX(owned, width), end: this._frameToX(chunk.endFrame, width) };
     };
 
-    schedule.chunks.forEach((chunk, tile) => {
-      items.push({
-        kind: "band",
-        tile,
-        x: this._frameToX(chunk.startFrame, width),
-        w: this._frameToX(chunk.endFrame, width) - this._frameToX(chunk.startFrame, width),
-      });
-    });
-
-    // MAIN track entries are laid out as contiguous spans, like the Director's
-    // segments: an entry starts at its own frame and runs to the next entry, so the
-    // left border marks its temporal position and two entries inside one tile split
-    // that tile between them.
     if (!retakeActive) {
-      const entries = [];
+      // Each tile is filled by the keyframe that feeds its start. A tile with no such
+      // keyframe shows its empty slot instead. Should more than one keyframe feed the
+      // same tile, they divide it in frame order.
+      const byTile = new Map();
       this.timeline.keyframes.forEach((keyframe, index) => {
-        entries.push({ kind: "keyframe", index, frame: Number(keyframe.frame) || 0, file: keyframe.imageFile });
+        const frame = Number(keyframe.frame) || 0;
+        const tile = this._influencedTile(frame, schedule);
+        if (!byTile.has(tile)) byTile.set(tile, []);
+        byTile.get(tile).push({ index, frame, file: keyframe.imageFile });
       });
-      const taken = new Set(entries.map(entry => entry.frame));
-      schedule.referenceFrames.forEach((frame, slot) => {
-        const claimed = this.timeline.keyframes.some(keyframe => {
-          const declared = Number(keyframe.defaultSlot);
-          return Number(keyframe.frame) === frame || (Number.isInteger(declared) && declared === slot);
-        });
-        if (claimed || taken.has(frame)) return;
-        entries.push({ kind: "slot", slot, frame });
-        taken.add(frame);
-      });
-      entries.sort((a, b) => a.frame - b.frame);
-      entries.forEach((entry, position) => {
-        const next = entries[position + 1];
-        const endFrame = next ? next.frame : totalFrames - 1;
-        const x = this._frameToX(entry.frame, width);
-        items.push({
-          ...entry,
-          track: "main",
-          tile: this._tileAtFrame(entry.frame),
-          x,
-          w: Math.max(24, (next ? this._frameToX(endFrame, width) : width) - x),
-          endFrame,
-        });
-      });
+
+      for (let tile = 0; tile <= tileCountReal; tile += 1) {
+        const band = items.find(item => item.kind === "band" && item.tile === tile);
+        if (!band) continue;
+        const claimants = (byTile.get(tile) || []).sort((a, b) => a.frame - b.frame);
+        if (claimants.length) {
+          const share = band.w / claimants.length;
+          claimants.forEach((entry, position) => {
+            items.push({
+              kind: "keyframe",
+              track: "main",
+              tile,
+              virtual: band.virtual,
+              index: entry.index,
+              frame: entry.frame,
+              file: entry.file,
+              x: band.x + share * position,
+              w: share,
+            });
+          });
+        } else {
+          const frame = schedule.referenceFrames[tile];
+          if (frame === undefined) continue;
+          items.push({
+            kind: "slot",
+            track: "main",
+            tile,
+            virtual: band.virtual,
+            slot: tile,
+            frame,
+            x: band.x,
+            w: band.w,
+          });
+        }
+      }
     }
 
     for (const [track, kind] of [["main", "video"], ["ic", "ic"], ["audio", "audio"]]) {
@@ -984,19 +1029,26 @@ class LoopingDirectorEditor {
 
     for (const item of items) {
       if (item.kind !== "band") continue;
-      ctx.fillStyle = item.tile % 2 ? "rgba(255,255,255,0.045)" : "rgba(255,255,255,0.015)";
-      ctx.fillRect(item.x, RULER_HEIGHT, item.w, CANVAS_HEIGHT - RULER_HEIGHT);
+      if (item.virtual) {
+        // Past the end of the clip: shown so the trailing keyframe has a home, but it
+        // is not generated.
+        ctx.fillStyle = "rgba(0,0,0,0.35)";
+        ctx.fillRect(item.x, RULER_HEIGHT, item.w, CANVAS_HEIGHT - RULER_HEIGHT);
+      } else {
+        ctx.fillStyle = item.tile % 2 ? "rgba(255,255,255,0.045)" : "rgba(255,255,255,0.015)";
+        ctx.fillRect(item.x, RULER_HEIGHT, item.w, CANVAS_HEIGHT - RULER_HEIGHT);
+      }
       ctx.fillStyle = "#111";
-      ctx.fillRect(Math.floor(item.x + item.w) - 1, RULER_HEIGHT, 1, CANVAS_HEIGHT - RULER_HEIGHT);
-      if (item.tile === this.selectedTile) {
+      ctx.fillRect(Math.floor(item.x) , RULER_HEIGHT, 1, CANVAS_HEIGHT - RULER_HEIGHT);
+      if (!item.virtual && item.tile === this.selectedTile) {
         ctx.fillStyle = "rgba(136,136,136,0.10)";
         ctx.fillRect(item.x, RULER_HEIGHT, item.w, CANVAS_HEIGHT - RULER_HEIGHT);
       }
-      ctx.fillStyle = "#777";
+      ctx.fillStyle = item.virtual ? "#5a5a5a" : "#777";
       ctx.font = "bold 10px sans-serif";
       ctx.textAlign = "left";
       ctx.textBaseline = "top";
-      ctx.fillText(`TILE ${item.tile}`, item.x + 6, RULER_HEIGHT + 3);
+      ctx.fillText(item.virtual ? "NEXT TILE (not generated)" : `TILE ${item.tile}`, item.x + 6, RULER_HEIGHT + 3);
     }
 
     for (const track of ["main", "ic", "audio"]) {
@@ -1223,6 +1275,11 @@ class LoopingDirectorEditor {
     ctx.textAlign = "left";
     ctx.fillText(`K${item.index} · ${frameLabel(item.frame, this.node)}`, item.x + 5, bottom - 9);
     ctx.restore();
+
+    if (item.virtual) {
+      ctx.fillStyle = "rgba(0,0,0,0.55)";
+      ctx.fillRect(item.x, top + 1, item.w, height);
+    }
 
     ctx.strokeStyle = selected ? "#888" : protectedEntry ? "#d7ad63" : "#111";
     ctx.lineWidth = selected ? 2 : 1;
