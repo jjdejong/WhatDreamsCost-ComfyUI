@@ -8,6 +8,8 @@ const BLOCK_HEIGHT = 160;
 const IC_TRACK_HEIGHT = 80;
 const AUDIO_TRACK_HEIGHT = 80;
 const SIDEBAR_WIDTH = 120;
+// Trailing margin so a block on the final frame is still a usable width.
+const END_PAD = 92;
 const CANVAS_HEIGHT = RULER_HEIGHT + BLOCK_HEIGHT + IC_TRACK_HEIGHT + AUDIO_TRACK_HEIGHT;
 const DEFAULT_FRAME_RATE = 24;
 const DEFAULT_TOTAL_DURATION = 48;
@@ -412,14 +414,21 @@ class LoopingDirectorEditor {
     return Math.round(available * this.zoom);
   }
 
+  // A keyframe on the final frame still needs a block wide enough to see and click,
+  // so the timeline maps into the canvas minus a trailing margin.
+  _timelineWidth(width) {
+    return Math.max(1, width - END_PAD);
+  }
+
   _frameToX(frame, width) {
     const total = Math.max(1, frameCount(this.node) - 1);
-    return (Math.max(0, Math.min(total, frame)) / total) * width;
+    return (Math.max(0, Math.min(total, frame)) / total) * this._timelineWidth(width);
   }
 
   _xToFrame(x, width) {
     const total = Math.max(1, frameCount(this.node) - 1);
-    return snapFrame((Math.max(0, Math.min(width, x)) / Math.max(1, width)) * total, frameCount(this.node));
+    const span = this._timelineWidth(width);
+    return snapFrame((Math.max(0, Math.min(span, x)) / span) * total, frameCount(this.node));
   }
 
   _thumbnail(file) {
@@ -441,14 +450,6 @@ class LoopingDirectorEditor {
     this.canvas.addEventListener("pointerdown", event => {
       const rect = this.canvas.getBoundingClientRect();
       this._onCanvasPointer(event.clientX - rect.left, event.clientY - rect.top, event);
-    });
-    this.canvas.addEventListener("dblclick", event => {
-      const rect = this.canvas.getBoundingClientRect();
-      const hit = this._hitTest(event.clientX - rect.left, event.clientY - rect.top);
-      if (hit && hit.kind === "slot") {
-        this._pendingSlot = hit.slot;
-        this.fileInput.click();
-      }
     });
     this.viewport.addEventListener("dragover", event => {
       if (Array.from(event.dataTransfer?.items || []).some(item => item.kind === "file")) {
@@ -493,14 +494,25 @@ class LoopingDirectorEditor {
       this.selection = null;
       this.selectedKeyframe = null;
       this.selectedTile = hit.tile;
-      if (event?.detail === 1) {
-        this._pendingSlot = hit.slot;
-        this.fileInput.click();
-      }
+      this._pendingSlot = hit.slot;
+      this.fileInput.click();
     } else if (hit && hit.kind === "keyframe") {
+      // The close box takes priority over selection and dragging.
+      const close = this._closeButtonRect(hit);
+      if (!this._isProtected(hit.index)
+          && x >= close.x && x <= close.x + close.w
+          && y >= close.y && y <= close.y + close.h) {
+        this._deleteKeyframe(hit.index);
+        this.selection = null;
+        this.selectedKeyframe = null;
+        this._commit();
+        this.refresh();
+        return;
+      }
       this.selection = { kind: "keyframe", index: hit.index };
       this.selectedKeyframe = hit.index;
       this.selectedTile = hit.tile;
+      this._beginKeyframeDrag(hit, x, event);
     } else if (hit && hit.kind === "media") {
       this.selection = { kind: hit.track, index: hit.index };
       this.selectedKeyframe = null;
@@ -511,6 +523,53 @@ class LoopingDirectorEditor {
       if (hit) this.selectedTile = hit.tile;
     }
     this._renderAll();
+  }
+
+  // Dragging a keyframe block moves its start time. It stays on the 8-frame grid and
+  // cannot cross its neighbours, and the move makes the position manual so the
+  // schedule stops repositioning it.
+  _beginKeyframeDrag(item, startX, event) {
+    const keyframe = this.timeline.keyframes[item.index];
+    if (!keyframe || typeof window === "undefined") return;
+    const width = this.canvas.width / (window.devicePixelRatio || 1);
+    const total = frameCount(this.node);
+    const others = this.timeline.keyframes
+      .filter((_, index) => index !== item.index)
+      .map(entry => Number(entry.frame) || 0)
+      .sort((a, b) => a - b);
+    const lower = others.filter(frame => frame < item.frame).pop();
+    const upper = others.find(frame => frame > item.frame);
+    const minFrame = lower === undefined ? 0 : lower + TIME_SCALE;
+    const maxFrame = upper === undefined
+      ? Math.floor((total - 1) / TIME_SCALE) * TIME_SCALE
+      : upper - TIME_SCALE;
+    if (maxFrame < minFrame) return;
+
+    const grabOffset = startX - item.x;
+    let moved = false;
+    const move = moveEvent => {
+      const rect = this.canvas.getBoundingClientRect();
+      const frame = this._xToFrame(moveEvent.clientX - rect.left - grabOffset, width);
+      const clamped = Math.max(minFrame, Math.min(maxFrame, frame));
+      if (clamped === Number(keyframe.frame)) return;
+      keyframe.frame = clamped;
+      keyframe.autoPosition = false;
+      moved = true;
+      this.selectedFrame = clamped;
+      this._renderCanvas();
+      this._renderControls();
+    };
+    const up = () => {
+      window.removeEventListener("pointermove", move);
+      window.removeEventListener("pointerup", up);
+      if (moved) {
+        this._commit();
+        this.refresh();
+      }
+    };
+    window.addEventListener("pointermove", move);
+    window.addEventListener("pointerup", up);
+    event?.preventDefault?.();
   }
 
   _tileAtFrame(frame) {
@@ -795,22 +854,20 @@ class LoopingDirectorEditor {
 
   // Geometry of everything drawn on the canvas, shared by the renderer and hit
   // testing so the two can never disagree.
+  // Geometry of everything drawn on the canvas, shared by the renderer and hit
+  // testing so the two can never disagree.
   _layout() {
     const width = this._canvasWidth();
     const schedule = loopingSchedule(this.node);
     const retakeActive = Boolean(this.timeline.retake_mode);
+    const totalFrames = schedule.frameCount;
     const items = [];
 
     const tileSpan = tile => {
       const chunk = schedule.chunks[tile];
       if (!chunk) return null;
-      const startFrame = tile ? schedule.chunks[tile - 1].endFrame - schedule.overlap : chunk.startFrame;
       const owned = tile ? schedule.chunks[tile].startFrame + schedule.overlap : chunk.startFrame;
-      return {
-        x: this._frameToX(tile ? owned : chunk.startFrame, width),
-        end: this._frameToX(chunk.endFrame, width),
-        startFrame,
-      };
+      return { x: this._frameToX(owned, width), end: this._frameToX(chunk.endFrame, width) };
     };
 
     schedule.chunks.forEach((chunk, tile) => {
@@ -822,34 +879,37 @@ class LoopingDirectorEditor {
       });
     });
 
+    // MAIN track entries are laid out as contiguous spans, like the Director's
+    // segments: an entry starts at its own frame and runs to the next entry, so the
+    // left border marks its temporal position and two entries inside one tile split
+    // that tile between them.
     if (!retakeActive) {
-      const occupied = new Set();
-      this.timeline.keyframes.forEach(keyframe => {
-        occupied.add(Number(keyframe.frame));
-        const slot = Number(keyframe.defaultSlot);
-        if (Number.isInteger(slot)) occupied.add(schedule.referenceFrames[slot]);
-      });
-      schedule.referenceFrames.forEach((frame, slot) => {
-        if (occupied.has(frame)) return;
-        items.push({
-          kind: "slot",
-          slot,
-          tile: this._tileAtFrame(frame),
-          frame,
-          x: this._frameToX(frame, width),
-          track: "main",
-        });
-      });
+      const entries = [];
       this.timeline.keyframes.forEach((keyframe, index) => {
-        const frame = Number(keyframe.frame);
+        entries.push({ kind: "keyframe", index, frame: Number(keyframe.frame) || 0, file: keyframe.imageFile });
+      });
+      const taken = new Set(entries.map(entry => entry.frame));
+      schedule.referenceFrames.forEach((frame, slot) => {
+        const claimed = this.timeline.keyframes.some(keyframe => {
+          const declared = Number(keyframe.defaultSlot);
+          return Number(keyframe.frame) === frame || (Number.isInteger(declared) && declared === slot);
+        });
+        if (claimed || taken.has(frame)) return;
+        entries.push({ kind: "slot", slot, frame });
+        taken.add(frame);
+      });
+      entries.sort((a, b) => a.frame - b.frame);
+      entries.forEach((entry, position) => {
+        const next = entries[position + 1];
+        const endFrame = next ? next.frame : totalFrames - 1;
+        const x = this._frameToX(entry.frame, width);
         items.push({
-          kind: "keyframe",
-          index,
-          frame,
-          tile: this._tileAtFrame(frame),
-          x: this._frameToX(frame, width),
-          file: keyframe.imageFile,
+          ...entry,
           track: "main",
+          tile: this._tileAtFrame(entry.frame),
+          x,
+          w: Math.max(24, (next ? this._frameToX(endFrame, width) : width) - x),
+          endFrame,
         });
       });
     }
@@ -879,6 +939,17 @@ class LoopingDirectorEditor {
     return [RULER_HEIGHT + BLOCK_HEIGHT + IC_TRACK_HEIGHT, CANVAS_HEIGHT];
   }
 
+  // A keyframe may not be deleted while it is the external reference. Selecting a
+  // different reference releases the old one and protects the new one.
+  _isProtected(index) {
+    return this.timeline.keyframes.length > 0 && index === this._referenceIndex();
+  }
+
+  _closeButtonRect(item) {
+    const [top] = this._trackBounds("main");
+    return { x: item.x + item.w - 20, y: top + 4, w: 16, h: 16 };
+  }
+
   _hitTest(x, y) {
     const { items } = this._layout();
     const track = y < RULER_HEIGHT ? null
@@ -886,17 +957,11 @@ class LoopingDirectorEditor {
       : y < RULER_HEIGHT + BLOCK_HEIGHT + IC_TRACK_HEIGHT ? "ic"
       : "audio";
     if (!track) return null;
-    // Point items sit above spans, so test them first.
-    for (const item of items) {
-      if (item.track !== track) continue;
-      if (item.kind === "slot" || item.kind === "keyframe") {
-        if (Math.abs(x - item.x) <= 46) return item;
-      }
-    }
-    for (const item of items) {
-      if (item.kind !== "media" || item.track !== track) continue;
-      if (x >= item.x && x <= item.x + item.w) return item;
-    }
+    const candidates = items.filter(item => item.track === track && x >= item.x && x <= item.x + item.w);
+    // Later entries win where spans touch, so the left border of the next block is
+    // always grabbable.
+    const hit = candidates[candidates.length - 1];
+    if (hit) return hit;
     const band = items.find(item => item.kind === "band" && x >= item.x && x <= item.x + item.w);
     return band ? { kind: "band", tile: band.tile, track } : null;
   }
@@ -912,13 +977,11 @@ class LoopingDirectorEditor {
     const ctx = this.ctx;
     ctx.setTransform(ratio, 0, 0, ratio, 0, 0);
     ctx.clearRect(0, 0, width, CANVAS_HEIGHT);
-
     ctx.fillStyle = "#2a2a2a";
     ctx.fillRect(0, 0, width, CANVAS_HEIGHT);
 
     this._drawRuler(ctx, width, schedule);
 
-    // Alternating tile bands across every track, so tile ownership reads at a glance.
     for (const item of items) {
       if (item.kind !== "band") continue;
       ctx.fillStyle = item.tile % 2 ? "rgba(255,255,255,0.045)" : "rgba(255,255,255,0.015)";
@@ -933,26 +996,23 @@ class LoopingDirectorEditor {
       ctx.font = "bold 10px sans-serif";
       ctx.textAlign = "left";
       ctx.textBaseline = "top";
-      ctx.fillText(`TILE ${item.tile}`, item.x + 6, RULER_HEIGHT + 4);
+      ctx.fillText(`TILE ${item.tile}`, item.x + 6, RULER_HEIGHT + 3);
     }
 
     for (const track of ["main", "ic", "audio"]) {
       const [top, bottom] = this._trackBounds(track);
       ctx.fillStyle = "#111";
       ctx.fillRect(0, bottom - 1, width, 1);
-      if (track !== "main") {
-        const empty = !items.some(item => item.kind === "media" && item.track === track);
-        if (empty) {
-          ctx.fillStyle = "#555";
-          ctx.font = "11px sans-serif";
-          ctx.textAlign = "center";
-          ctx.textBaseline = "middle";
-          ctx.fillText(
-            track === "ic" ? "Drop an IC video or image" : "Drop audio",
-            width / 2,
-            (top + bottom) / 2,
-          );
-        }
+      if (track !== "main" && !items.some(item => item.kind === "media" && item.track === track)) {
+        ctx.fillStyle = "#555";
+        ctx.font = "11px sans-serif";
+        ctx.textAlign = "center";
+        ctx.textBaseline = "middle";
+        ctx.fillText(
+          track === "ic" ? "Drop an IC video or image" : "Drop audio",
+          width / 2,
+          (top + bottom) / 2,
+        );
       }
     }
 
@@ -972,15 +1032,13 @@ class LoopingDirectorEditor {
       ctx.textAlign = "center";
       ctx.textBaseline = "middle";
       ctx.fillText("RETAKE MODE — keyframe and guide editing disabled", width / 2, RULER_HEIGHT + BLOCK_HEIGHT / 2);
-      const tiles = retakeTileList(this.timeline.retake || {}, schedule.chunks.length);
       ctx.fillStyle = "rgba(230,179,90,0.16)";
-      for (const tile of tiles) {
+      for (const tile of retakeTileList(this.timeline.retake || {}, schedule.chunks.length)) {
         const band = items.find(item => item.kind === "band" && item.tile === tile);
         if (band) ctx.fillRect(band.x, RULER_HEIGHT, band.w, CANVAS_HEIGHT - RULER_HEIGHT);
       }
     }
 
-    // Playhead
     const playX = Math.floor(this._frameToX(this.selectedFrame, width)) + 0.5;
     ctx.strokeStyle = "#e5484d";
     ctx.lineWidth = 1;
@@ -996,27 +1054,23 @@ class LoopingDirectorEditor {
     const total = Math.max(1, schedule.frameCount - 1);
     const rate = schedule.frameRate;
     const seconds = this.displayMode === "seconds";
-    const targetPx = 90;
     const unitTotal = seconds ? total / rate : total;
-    let step = Math.max(seconds ? 0.5 : 8, Math.pow(10, Math.floor(Math.log10(unitTotal / (width / targetPx)))));
+    let step = seconds ? 1 : 8;
     for (const candidate of seconds ? [0.5, 1, 2, 5, 10, 15, 30, 60] : [8, 16, 48, 96, 240, 480, 960]) {
-      if (candidate >= unitTotal / (width / targetPx)) { step = candidate; break; }
+      if (candidate >= unitTotal / Math.max(1, width / 90)) { step = candidate; break; }
     }
     ctx.fillStyle = "#1e1e1e";
     ctx.fillRect(0, 0, width, RULER_HEIGHT);
     ctx.font = "10px sans-serif";
     ctx.textBaseline = "middle";
-
     const minor = step / 5;
     ctx.fillStyle = "#444";
     for (let value = 0; value <= unitTotal + 1e-6; value += minor) {
-      const frame = seconds ? value * rate : value;
-      const x = Math.floor(this._frameToX(frame, width));
+      const x = Math.floor(this._frameToX(seconds ? value * rate : value, width));
       ctx.fillRect(x, RULER_HEIGHT - 3, 1, 3);
     }
     for (let value = 0; value <= unitTotal + 1e-6; value += step) {
-      const frame = seconds ? value * rate : value;
-      const x = Math.floor(this._frameToX(frame, width));
+      const x = Math.floor(this._frameToX(seconds ? value * rate : value, width));
       ctx.fillStyle = "#aaa";
       ctx.fillRect(x, RULER_HEIGHT - 6, 1, 6);
       if (value > 0) {
@@ -1026,13 +1080,11 @@ class LoopingDirectorEditor {
     }
     ctx.textAlign = "left";
     ctx.fillStyle = "#aaa";
-    ctx.fillText(seconds ? "0" : "0", 4, RULER_HEIGHT / 2);
+    ctx.fillText("0", 4, RULER_HEIGHT / 2);
     ctx.fillStyle = "#111";
     ctx.fillRect(0, RULER_HEIGHT - 1, width, 1);
   }
 
-  // Segment block in the Director's style: a translucent header bar carrying the type
-  // tag and filename, and a prompt/label strip along the bottom.
   _drawMediaBlock(ctx, item) {
     const [top, bottom] = this._trackBounds(item.track);
     const height = bottom - top;
@@ -1041,7 +1093,6 @@ class LoopingDirectorEditor {
     ctx.beginPath();
     ctx.rect(item.x, top, item.w, height - 1);
     ctx.clip();
-
     ctx.fillStyle = item.mediaKind === "audio" ? "#243447" : item.mediaKind === "ic" ? "#2e2a40" : "#233a2e";
     ctx.fillRect(item.x, top + 1, item.w, height - 3);
     ctx.strokeStyle = selected ? "#888" : "#111";
@@ -1070,93 +1121,130 @@ class LoopingDirectorEditor {
       ctx.textAlign = "left";
       ctx.fillText(name, item.x + tagWidth + 5, top + 9);
     }
-
-    const strength = Number(item.segment.strength ?? 1);
     ctx.fillStyle = "rgba(0,0,0,0.45)";
     ctx.fillRect(item.x, bottom - 17, item.w, 16);
     ctx.fillStyle = "#bbb";
     ctx.font = "9px sans-serif";
     ctx.textAlign = "left";
-    ctx.fillText(`tile ${item.tile} · strength ${strength.toFixed(2)}`, item.x + 5, bottom - 9);
+    ctx.fillText(`tile ${item.tile} · strength ${Number(item.segment.strength ?? 1).toFixed(2)}`, item.x + 5, bottom - 9);
     ctx.restore();
   }
 
   _drawSlot(ctx, item) {
-    const top = RULER_HEIGHT + 26;
-    const w = 92;
-    const h = 96;
-    const x = Math.max(2, Math.min(item.x - w / 2, this._canvasWidth() - w - 2));
+    const [top, bottom] = this._trackBounds("main");
+    const height = bottom - top - 2;
     ctx.save();
-    ctx.setLineDash([4, 3]);
-    ctx.strokeStyle = "#4a4a4a";
-    ctx.lineWidth = 1;
+    ctx.beginPath();
+    ctx.rect(item.x, top + 1, item.w, height);
+    ctx.clip();
     ctx.fillStyle = "#1e1e1e";
-    ctx.fillRect(x, top, w, h);
-    ctx.strokeRect(x + 0.5, top + 0.5, w - 1, h - 1);
+    ctx.fillRect(item.x, top + 1, item.w, height);
+    ctx.setLineDash([4, 3]);
+    ctx.strokeStyle = "#444";
+    ctx.lineWidth = 1;
+    ctx.strokeRect(item.x + 0.5, top + 1.5, item.w - 1, height - 1);
     ctx.setLineDash([]);
     ctx.fillStyle = "#555";
     ctx.font = "bold 22px sans-serif";
     ctx.textAlign = "center";
     ctx.textBaseline = "middle";
-    ctx.fillText("+", x + w / 2, top + h / 2 - 6);
+    ctx.fillText("+", item.x + item.w / 2, top + height / 2);
     ctx.fillStyle = "#777";
     ctx.font = "9px sans-serif";
-    // Slot 0 is the start image; slot k terminates tile k-1.
-    ctx.fillText(item.slot === 0 ? "start" : `tile ${item.slot - 1} end`, x + w / 2, top + h - 20);
-    ctx.fillText(frameLabel(item.frame, this.node), x + w / 2, top + h - 8);
+    ctx.textAlign = "left";
+    ctx.fillText(
+      `${item.slot === 0 ? "start" : `tile ${item.slot - 1} end`} · ${frameLabel(item.frame, this.node)}`,
+      item.x + 5,
+      bottom - 9,
+    );
     ctx.restore();
   }
 
+  // Same fill as the Director: fit the thumbnail to the block height, then tile it
+  // horizontally across the span and clip to the block.
   _drawKeyframe(ctx, item) {
-    const top = RULER_HEIGHT + 26;
-    const w = 92;
-    const h = 96;
-    const x = Math.max(2, Math.min(item.x - w / 2, this._canvasWidth() - w - 2));
-    const isReference = item.index === this._referenceIndex();
+    const [top, bottom] = this._trackBounds("main");
+    const height = bottom - top - 2;
+    const protectedEntry = this._isProtected(item.index);
     const selected = this.selection && this.selection.kind === "keyframe" && this.selection.index === item.index;
+
     ctx.save();
     ctx.beginPath();
-    ctx.rect(x, top, w, h);
+    ctx.rect(item.x, top + 1, item.w, height);
     ctx.clip();
     ctx.fillStyle = "#181818";
-    ctx.fillRect(x, top, w, h);
+    ctx.fillRect(item.x, top + 1, item.w, height);
 
     const image = this._thumbnail(item.file);
     if (image && image.complete && image.naturalWidth) {
-      const scale = Math.min(w / image.naturalWidth, (h - 18) / image.naturalHeight);
-      const dw = image.naturalWidth * scale;
-      const dh = image.naturalHeight * scale;
-      ctx.drawImage(image, x + (w - dw) / 2, top + (h - 18 - dh) / 2, dw, dh);
+      const imgRatio = image.naturalWidth / image.naturalHeight;
+      const boxRatio = item.w / height;
+      if (imgRatio > boxRatio) {
+        const drawW = item.w;
+        const drawH = item.w / imgRatio;
+        ctx.drawImage(image, item.x, top + 1 + (height - drawH) / 2, drawW, drawH);
+      } else {
+        const drawH = height;
+        const drawW = height * imgRatio;
+        const drawY = top + 1;
+        const drawX = item.x + (item.w - drawW) / 2;
+        ctx.drawImage(image, drawX, drawY, drawW, drawH);
+        for (let leftX = drawX - drawW; leftX + drawW > item.x; leftX -= drawW) {
+          ctx.drawImage(image, leftX, drawY, drawW, drawH);
+        }
+        for (let rightX = drawX + drawW; rightX < item.x + item.w; rightX += drawW) {
+          ctx.drawImage(image, rightX, drawY, drawW, drawH);
+        }
+      }
     }
 
     ctx.fillStyle = "rgba(0,0,0,0.60)";
-    ctx.fillRect(x, top, 42, 16);
+    ctx.fillRect(item.x, top + 1, 42, 16);
     ctx.fillStyle = "#fff";
     ctx.font = "bold 10px sans-serif";
     ctx.textAlign = "center";
     ctx.textBaseline = "middle";
-    ctx.fillText("IMAGE", x + 21, top + 8);
+    ctx.fillText("IMAGE", item.x + 21, top + 9);
 
-    if (isReference) {
+    if (protectedEntry) {
       ctx.font = "bold 9px sans-serif";
       const text = "REFERENCE";
       const badgeWidth = ctx.measureText(text).width + 10;
       ctx.fillStyle = "rgba(215,173,99,0.85)";
-      ctx.fillRect(x + w - badgeWidth, top, badgeWidth, 16);
+      ctx.fillRect(item.x + 43, top + 1, badgeWidth, 16);
       ctx.fillStyle = "#1a1a1a";
-      ctx.fillText(text, x + w - badgeWidth / 2, top + 8);
+      ctx.fillText(text, item.x + 43 + badgeWidth / 2, top + 9);
     }
 
     ctx.fillStyle = "rgba(0,0,0,0.55)";
-    ctx.fillRect(x, top + h - 16, w, 16);
+    ctx.fillRect(item.x, bottom - 17, item.w, 16);
     ctx.fillStyle = "#ccc";
     ctx.font = "9px sans-serif";
-    ctx.fillText(`K${item.index} · ${frameLabel(item.frame, this.node)}`, x + w / 2, top + h - 8);
+    ctx.textAlign = "left";
+    ctx.fillText(`K${item.index} · ${frameLabel(item.frame, this.node)}`, item.x + 5, bottom - 9);
     ctx.restore();
 
-    ctx.strokeStyle = selected ? "#888" : isReference ? "#d7ad63" : "#111";
+    ctx.strokeStyle = selected ? "#888" : protectedEntry ? "#d7ad63" : "#111";
     ctx.lineWidth = selected ? 2 : 1;
-    ctx.strokeRect(x + 0.5, top + 0.5, w - 1, h - 1);
+    ctx.strokeRect(item.x + 0.5, top + 1.5, item.w - 1, height - 1);
+
+    // Delete affordance, mirroring the Director's per-segment close button. The
+    // protected reference keyframe shows none.
+    if (!protectedEntry && item.w > 46) {
+      const rect = this._closeButtonRect(item);
+      ctx.fillStyle = "rgba(0,0,0,0.65)";
+      ctx.fillRect(rect.x, rect.y, rect.w, rect.h);
+      ctx.strokeStyle = "#555";
+      ctx.lineWidth = 1;
+      ctx.strokeRect(rect.x + 0.5, rect.y + 0.5, rect.w - 1, rect.h - 1);
+      ctx.strokeStyle = "#ddd";
+      ctx.beginPath();
+      ctx.moveTo(rect.x + 5, rect.y + 5);
+      ctx.lineTo(rect.x + rect.w - 5, rect.y + rect.h - 5);
+      ctx.moveTo(rect.x + rect.w - 5, rect.y + 5);
+      ctx.lineTo(rect.x + 5, rect.y + rect.h - 5);
+      ctx.stroke();
+    }
   }
 
   _renderToolbar() {
@@ -1173,8 +1261,13 @@ class LoopingDirectorEditor {
       if (retakeActive) button.title = "Disabled while Retake mode is active";
       this.toolbar.appendChild(button);
     }
+    const selectedKeyframe = this.selection && this.selection.kind === "keyframe";
+    const isReference = selectedKeyframe && this._isProtected(this.selection.index);
     const deleteButton = makeIconButton("Delete", "Delete the selected item", () => this._deleteSelection(), ICONS.trash, true);
-    deleteButton.disabled = retakeActive || !this.selection;
+    deleteButton.disabled = retakeActive || !this.selection || isReference;
+    if (isReference) {
+      deleteButton.title = "The external reference keyframe cannot be deleted — point the reference at another keyframe first";
+    }
     this.toolbar.appendChild(deleteButton);
 
     const retakeButton = makeButton(
@@ -1574,6 +1667,24 @@ class LoopingDirectorEditor {
     this._renderCanvas();
     this._renderControls();
     this._renderPrompts();
+    this._syncHeight();
+  }
+
+  // The DOM widget is clipped to whatever height it reports, so report what the
+  // content actually needs. Without this the prompt panels are cut off at the node's
+  // bottom edge with no way to reach them.
+  _syncHeight() {
+    const height = Math.ceil(this.container.scrollHeight || 0);
+    if (!height || height === this._reportedHeight) return;
+    this._reportedHeight = height;
+    const widget = this.node.widgets?.find(item => item.name === "looping_director_ui");
+    if (!widget) return;
+    widget.computeSize = width => [Math.max(10, width - 20), height];
+    const minimum = height + 200;
+    if ((this.node.size?.[1] || 0) < minimum) {
+      this.node.setSize?.([Math.max(this.node.size?.[0] || 0, 900), minimum]);
+    }
+    this.node.setDirtyCanvas?.(true, true);
   }
 
   _normalizeGuideSegments() {
