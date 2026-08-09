@@ -137,6 +137,60 @@ def sampler_widget_values():
     return [defaults[name] for name in sampler_widget_names()]
 
 
+def sync_sampler_node(wf):
+    """Bring an existing workflow's sampler node back in line with the schema.
+
+    Rebuilds its input list from SAMPLER_INPUTS_SPEC and rewrites widgets_values in
+    serialization order. Links are carried across by input name, not slot index, so
+    inserting an input cannot silently repoint an existing connection. Returns True
+    when anything changed.
+    """
+    sampler = next(
+        (node for node in wf["nodes"] if node["type"] == "LTXLoopingDirectorSampler"),
+        None,
+    )
+    if sampler is None:
+        return False
+
+    previous = {item["name"]: item for item in sampler.get("inputs", [])}
+    old_slot_of = {item["name"]: index for index, item in enumerate(sampler.get("inputs", []))}
+    new_inputs = []
+    for name, typ, extra in SAMPLER_INPUTS:
+        carried = previous.get(name, {})
+        new_inputs.append({
+            "name": name,
+            "type": typ,
+            "link": carried.get("link"),
+            **extra,
+        })
+    new_slot_of = {item["name"]: index for index, item in enumerate(new_inputs)}
+
+    changed = (
+        [item["name"] for item in sampler.get("inputs", [])] != [item["name"] for item in new_inputs]
+        or sampler.get("widgets_values") != sampler_widget_values()
+    )
+    sampler["inputs"] = new_inputs
+    sampler["widgets_values"] = sampler_widget_values()
+
+    name_of_old_slot = {index: name for name, index in old_slot_of.items()}
+    declared_type = {name: typ for name, typ, _ in SAMPLER_INPUTS}
+    for link in wf["links"]:
+        if link[3] != sampler["id"]:
+            continue
+        name = name_of_old_slot.get(link[4])
+        if name is None or name not in new_slot_of:
+            raise ValueError(f"sampler link points at unknown input slot {link[4]}")
+        # A link whose type does not match its target means the graph is wired to the
+        # wrong socket; silently re-indexing it would carry the mistake forward.
+        if link[5] != declared_type[name]:
+            raise ValueError(
+                f"sampler input {name!r} expects {declared_type[name]} but a "
+                f"{link[5]} link is connected to it"
+            )
+        link[4] = new_slot_of[name]
+    return changed
+
+
 def aligned_frames(seconds, frame_rate, minimum):
     return max(minimum, round(seconds * frame_rate / TIME_SCALE) * TIME_SCALE)
 
@@ -224,7 +278,25 @@ def main(argv=None):
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--base", help=f"path to the source {BASE_NAME} workflow")
     parser.add_argument("--output", default=DEFAULT_OUTPUT, help="generated workflow path")
+    parser.add_argument(
+        "--sync",
+        metavar="WORKFLOW",
+        help=(
+            "repair an existing workflow's LTXLoopingDirectorSampler node in place "
+            "(input list and widget values) instead of generating the sample"
+        ),
+    )
     args = parser.parse_args(argv)
+
+    if args.sync:
+        target = os.path.abspath(args.sync)
+        with open(target, encoding="utf-8") as stream:
+            existing = json.load(stream)
+        changed = sync_sampler_node(existing)
+        with open(target, "w", encoding="utf-8") as stream:
+            json.dump(existing, stream, indent=2)
+        print(f"{'Updated' if changed else 'Already current'}: {target}")
+        return
 
     with open(resolve_base(args.base), encoding="utf-8") as stream:
         wf = json.load(stream)

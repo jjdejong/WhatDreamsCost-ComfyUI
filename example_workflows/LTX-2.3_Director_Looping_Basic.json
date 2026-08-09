@@ -1016,7 +1016,7 @@
         "Node name for S&R": "LTXLoopingDirector",
         "timeline_data": "{\"version\":2,\"tile_prompts\":[\"The couple continues the dance as the woman lowers her raised leg into a controlled step and the man guides her through a slow turn. The camera makes a gentle orbit from the frontal view toward a left three-quarter view, ending near the first later reference image. Their footfalls remain synchronized and unhurried.\",\"Without a cut, the couple flows into the next phrase: the woman extends one arm and steps backward while the man follows with a measured pivot. The camera tracks sideways and eases into a right three-quarter view, ending near the second later reference image. Small pauses and natural eye contact preserve the continuous performance.\",\"The choreography continues seamlessly as the couple completes the turn and settles into another linked step. The camera slowly pushes in while drifting to a balanced front-right view, then holds on their relaxed faces, subtle micro-expressions, and steady breathing through the final frames.\"],\"keyframes\":[{\"frame\":0,\"imageFile\":\"example.png\"},{\"frame\":264,\"imageFile\":\"example.png\"},{\"frame\":504,\"imageFile\":\"example.png\"}],\"video_segments\":[],\"ic_segments\":[],\"audio_segments\":[],\"use_custom_audio\":false,\"inpaint_audio\":true,\"use_ic_video_audio\":false,\"retake_mode\":false,\"retake\":null,\"ic_settings\":{}}",
         "looping_director_timeline": "{\"version\":2,\"tile_prompts\":[\"The couple continues the dance as the woman lowers her raised leg into a controlled step and the man guides her through a slow turn. The camera makes a gentle orbit from the frontal view toward a left three-quarter view, ending near the first later reference image. Their footfalls remain synchronized and unhurried.\",\"Without a cut, the couple flows into the next phrase: the woman extends one arm and steps backward while the man follows with a measured pivot. The camera tracks sideways and eases into a right three-quarter view, ending near the second later reference image. Small pauses and natural eye contact preserve the continuous performance.\",\"The choreography continues seamlessly as the couple completes the turn and settles into another linked step. The camera slowly pushes in while drifting to a balanced front-right view, then holds on their relaxed faces, subtle micro-expressions, and steady breathing through the final frames.\"],\"keyframes\":[{\"frame\":0,\"imageFile\":\"example.png\"},{\"frame\":264,\"imageFile\":\"example.png\"},{\"frame\":504,\"imageFile\":\"example.png\"}],\"video_segments\":[],\"ic_segments\":[],\"audio_segments\":[],\"use_custom_audio\":false,\"inpaint_audio\":true,\"use_ic_video_audio\":false,\"retake_mode\":false,\"retake\":null,\"ic_settings\":{}}",
-       "looping_director_settings": {
+        "looping_director_settings": {
           "global_prompt": "Continuous cinematic live-action shot of the same adult couple dancing in a warmly lit rehearsal studio, with consistent identity, wardrobe, lighting, and environment across the entire clip. The action proceeds at a natural regular pace without a cut or reset. A medium-wide composition shows the wooden floor, soft window light, subtle film grain, and realistic body movement. Diegetic audio only: measured footsteps, fabric movement, gentle body contact, and quiet exerted breathing; no music, no dialogue.",
           "frame_rate": 24.0,
           "total_duration": 30.0,
@@ -1027,7 +1027,7 @@
         },
         "has_serialized_properties": true
       },
-     "widgets_values": [
+      "widgets_values": [
         "Continuous cinematic live-action shot of the same adult couple dancing in a warmly lit rehearsal studio, with consistent identity, wardrobe, lighting, and environment across the entire clip. The action proceeds at a natural regular pace without a cut or reset. A medium-wide composition shows the wooden floor, soft window light, subtle film grain, and realistic body movement. Diegetic audio only: measured footsteps, fabric movement, gentle body contact, and quiet exerted breathing; no music, no dialogue.",
         24.0,
         30.0,
@@ -1037,7 +1037,7 @@
         1088,
         0
       ],
-      "title": "LTX Looping Director — Basic 30s / 3 tiles"
+      "title": "LTX Looping Director \u2014 Basic 30s / 3 tiles"
     },
     {
       "id": 301,
@@ -1072,7 +1072,10 @@
         {
           "name": "cond_image_indices",
           "type": "STRING",
-          "link": 136
+          "link": 136,
+          "widget": {
+            "name": "cond_image_indices"
+          }
         },
         {
           "name": "model",
@@ -1393,6 +1396,14 @@
           "link": null
         },
         {
+          "name": "cond_image_crf",
+          "type": "INT",
+          "link": null,
+          "widget": {
+            "name": "cond_image_crf"
+          }
+        },
+        {
           "name": "checkpoint_policy",
           "type": "COMBO",
           "link": null,
@@ -1447,6 +1458,7 @@
       "widgets_values": [
         2,
         "full",
+        "",
         "None",
         1.0,
         1.0,
@@ -1468,16 +1480,15 @@
         1,
         8,
         1.0,
-        1.0,
         "0",
         1.0,
-        1.0,
         "0",
+        30,
         "off",
         "off",
         "ltx_looping_director"
       ],
-      "title": "LTX Looping Director Sampler — Basic 30s / 3 tiles"
+      "title": "LTX Looping Director Sampler \u2014 Basic 30s / 3 tiles"
     },
     {
       "id": 302,
@@ -1621,7 +1632,7 @@
       30,
       0,
       301,
-      35,
+      48,
       "LATENT"
     ],
     [

@@ -572,6 +572,49 @@ class TestLTXLoopingDirector(TestCase):
         for name in ("pass1_guiding_start_step", "pass2_guiding_start_step"):
             self.assertEqual(by_name[name], 0)
 
+    def test_every_sample_workflow_matches_the_sampler_schema(self):
+        """Both samples, generated and hand-maintained, must track the schema."""
+        sampler_cls = self._sampler_module().LTXLoopingDirectorSampler
+        schema_inputs = [item.id for item in sampler_cls.define_schema().inputs]
+        v1 = sampler_cls.INPUT_TYPES()
+        order = list(v1.get("required", {}).keys()) + list(v1.get("optional", {}).keys())
+        specs = {**v1.get("required", {}), **v1.get("optional", {})}
+        widget_count = sum(
+            1 for name in order
+            if isinstance(specs[name][0], list)
+            or specs[name][0] in {"INT", "FLOAT", "STRING", "BOOLEAN", "COMBO"}
+        )
+        sys.path.insert(0, str(ROOT / "example_workflows"))
+        try:
+            transformer = importlib.import_module("transform_to_director_looping")
+        finally:
+            sys.path.pop(0)
+        declared_type = {name: typ for name, typ, _ in transformer.SAMPLER_INPUTS}
+
+        for filename in ("LTX-2.3_Director_Looping.json", "LTX-2.3_Director_Looping_Basic.json"):
+            with self.subTest(workflow=filename):
+                path = ROOT / "example_workflows" / filename
+                if not path.is_file():
+                    self.skipTest(f"{filename} is not present")
+                with open(path, encoding="utf-8") as stream:
+                    workflow = json.load(stream)
+                sampler = next(
+                    node for node in workflow["nodes"]
+                    if node["type"] == "LTXLoopingDirectorSampler"
+                )
+                names = [item["name"] for item in sampler["inputs"]]
+                self.assertEqual(names, schema_inputs)
+                self.assertEqual(len(sampler["widgets_values"]), widget_count)
+                # No link may land on an input of a different type.
+                for link in workflow["links"]:
+                    if link[3] != sampler["id"]:
+                        continue
+                    self.assertEqual(
+                        link[5],
+                        declared_type[names[link[4]]],
+                        f"{filename}: {names[link[4]]} receives a {link[5]} link",
+                    )
+
     def test_transformer_widget_order_matches_the_schema(self):
         """The transformer derives widget order rather than hand-maintaining it."""
         sys.path.insert(0, str(ROOT / "example_workflows"))
