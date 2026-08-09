@@ -9,6 +9,12 @@ const IC_TRACK_HEIGHT = 80;
 const AUDIO_TRACK_HEIGHT = 80;
 const SIDEBAR_WIDTH = 120;
 const CANVAS_HEIGHT = RULER_HEIGHT + BLOCK_HEIGHT + IC_TRACK_HEIGHT + AUDIO_TRACK_HEIGHT;
+const TOOLBAR_HEIGHT = 74;      // two wrapped rows of pr-btn
+const CONTROLS_HEIGHT = 116;    // info + transport + guide encoding rows
+const TILE_PROMPT_HEIGHT = 96;
+const GLOBAL_PROMPT_HEIGHT = 76;
+const EDITOR_HEIGHT = TOOLBAR_HEIGHT + CANVAS_HEIGHT + CONTROLS_HEIGHT
+  + TILE_PROMPT_HEIGHT + GLOBAL_PROMPT_HEIGHT + 40;
 const DEFAULT_FRAME_RATE = 24;
 const DEFAULT_TOTAL_DURATION = 48;
 const DEFAULT_TILE_DURATION = 10;
@@ -251,7 +257,7 @@ class LoopingDirectorEditor {
         /* Only looping-specific chrome lives here. The toolbar, controls group,
            prompt panels and readouts reuse the Director's own pr- classes, which
            ltx_director.js injects globally, so both editors are one visual system. */
-        .ld-editor { font-size: 12px; color: #e0e0e0; max-height: 100%; overflow-y: auto; overflow-x: hidden; }
+        .ld-editor { font-size: 12px; color: #e0e0e0; overflow-y: auto; overflow-x: hidden; }
         .ld-timeline-layout { display: flex; flex-direction: row; width: 100%; border: 1px solid #111; border-radius: 6px; overflow: hidden; }
         .ld-sidebar { width: ${SIDEBAR_WIDTH}px; flex-shrink: 0; display: flex; flex-direction: column; border-right: 1px solid #111; box-sizing: border-box; background: #1e1e1e; user-select: none; }
         .ld-ruler-spacer { height: ${RULER_HEIGHT}px; width: 100%; border-bottom: 1px solid #111; background: #1e1e1e; box-sizing: border-box; flex-shrink: 0; }
@@ -291,6 +297,9 @@ class LoopingDirectorEditor {
       <div class="pr-prop-container ld-tile-prop"></div>
       <div class="pr-prop-container ld-global-prop"></div>
     `;
+    // A definite height is what makes overflow-y actually scroll, and it never
+    // changes, so the node cannot shrink itself on repeated renders.
+    this.container.style.height = `${EDITOR_HEIGHT}px`;
     this.toolbar = this.container.querySelector(".pr-actions");
     this.toolbarRight = this.container.querySelector(".pr-right-group");
     this.sidebar = this.container.querySelector(".ld-sidebar");
@@ -860,11 +869,20 @@ class LoopingDirectorEditor {
   // tile 0; the keyframe on the last tile's end feeds a tile that does not exist,
   // which is drawn as a virtual tile past the end of the clip.
   _influencedTile(frame, schedule) {
-    let influenced = 0;
-    for (const chunk of schedule.chunks) {
-      if (chunk.endFrame - TIME_SCALE <= frame) influenced += 1;
+    const chunks = schedule.chunks;
+    const last = chunks[chunks.length - 1];
+    // At or past the final frame it would feed a tile that does not exist.
+    if (frame >= last.endFrame - TIME_SCALE) return chunks.length;
+    // Anywhere inside a tile's leading overlap the keyframe is inherited as that
+    // tile's start reference, so it feeds that tile. It does not have to sit exactly
+    // on the previous tile's last frame.
+    for (let tile = chunks.length - 1; tile >= 1; tile -= 1) {
+      if (frame >= chunks[tile].startFrame && frame < chunks[tile].startFrame + schedule.overlap) {
+        return tile;
+      }
     }
-    return Math.min(influenced, schedule.chunks.length);
+    // Otherwise it sits in a tile's own region and feeds that tile from there.
+    return this._tileAtFrame(frame);
   }
 
   // The region a tile actually generates: tile 0 in full, later tiles after the
@@ -1723,24 +1741,6 @@ class LoopingDirectorEditor {
     this._renderCanvas();
     this._renderControls();
     this._renderPrompts();
-    this._syncHeight();
-  }
-
-  // The DOM widget is clipped to whatever height it reports, so report what the
-  // content actually needs. Without this the prompt panels are cut off at the node's
-  // bottom edge with no way to reach them.
-  _syncHeight() {
-    const height = Math.ceil(this.container.scrollHeight || 0);
-    if (!height || height === this._reportedHeight) return;
-    this._reportedHeight = height;
-    const widget = this.node.widgets?.find(item => item.name === "looping_director_ui");
-    if (!widget) return;
-    widget.computeSize = width => [Math.max(10, width - 20), height];
-    const minimum = height + 200;
-    if ((this.node.size?.[1] || 0) < minimum) {
-      this.node.setSize?.([Math.max(this.node.size?.[0] || 0, 900), minimum]);
-    }
-    this.node.setDirtyCanvas?.(true, true);
   }
 
   _normalizeGuideSegments() {
@@ -1879,11 +1879,10 @@ app.registerExtension({
         getValue: () => "",
         setValue: () => {},
       });
-      const editorHeight = RULER_HEIGHT + BLOCK_HEIGHT + IC_TRACK_HEIGHT + AUDIO_TRACK_HEIGHT + 280;
-      domWidget.computeSize = width => [Math.max(10, width - 20), editorHeight];
+      domWidget.computeSize = width => [Math.max(10, width - 20), EDITOR_HEIGHT];
       this._loopingDirectorEditor = new LoopingDirectorEditor(this, container);
       this.size[0] = Math.max(this.size?.[0] || 0, 900);
-      this.size[1] = Math.max(this.size?.[1] || 0, editorHeight + 180);
+      this.size[1] = Math.max(this.size?.[1] || 0, EDITOR_HEIGHT + 180);
     };
 
     const originalOnConfigure = nodeType.prototype.onConfigure;
