@@ -883,6 +883,14 @@ class LoopingDirectorEditor {
     return [schedule.frameCount - 1, schedule.frameCount - 1 + stride];
   }
 
+  // How far a block covering this tile may extend. Full tile extent, not the owned
+  // region: the block starts at its keyframe and fills the tile that keyframe feeds.
+  _tileEndFrame(tile, schedule) {
+    const chunks = schedule.chunks;
+    if (tile < chunks.length) return chunks[tile].endFrame;
+    return this._tileRegion(tile, schedule)[1];
+  }
+
   // Geometry of everything drawn on the canvas, shared by the renderer and hit
   // testing so the two can never disagree.
   _layout() {
@@ -912,51 +920,42 @@ class LoopingDirectorEditor {
     };
 
     if (!retakeActive) {
-      // Each tile is filled by the keyframe that feeds its start. A tile with no such
-      // keyframe shows its empty slot instead. Should more than one keyframe feed the
-      // same tile, they divide it in frame order.
+      // A keyframe feeds the start of one tile and fills it. Its block begins at the
+      // keyframe's own frame, so the left border marks the temporal position, and runs
+      // to the end of the tile it feeds -- clipped to the next entry so blocks stay
+      // contiguous. A tile with no keyframe shows its empty slot over the same span.
       const byTile = new Map();
       this.timeline.keyframes.forEach((keyframe, index) => {
         const frame = Number(keyframe.frame) || 0;
         const tile = this._influencedTile(frame, schedule);
         if (!byTile.has(tile)) byTile.set(tile, []);
-        byTile.get(tile).push({ index, frame, file: keyframe.imageFile });
+        byTile.get(tile).push({ kind: "keyframe", index, frame, file: keyframe.imageFile, tile });
       });
 
+      const entries = [];
       for (let tile = 0; tile <= tileCountReal; tile += 1) {
-        const band = items.find(item => item.kind === "band" && item.tile === tile);
-        if (!band) continue;
         const claimants = (byTile.get(tile) || []).sort((a, b) => a.frame - b.frame);
         if (claimants.length) {
-          const share = band.w / claimants.length;
-          claimants.forEach((entry, position) => {
-            items.push({
-              kind: "keyframe",
-              track: "main",
-              tile,
-              virtual: band.virtual,
-              index: entry.index,
-              frame: entry.frame,
-              file: entry.file,
-              x: band.x + share * position,
-              w: share,
-            });
-          });
-        } else {
-          const frame = schedule.referenceFrames[tile];
-          if (frame === undefined) continue;
-          items.push({
-            kind: "slot",
-            track: "main",
-            tile,
-            virtual: band.virtual,
-            slot: tile,
-            frame,
-            x: band.x,
-            w: band.w,
-          });
+          entries.push(...claimants);
+        } else if (schedule.referenceFrames[tile] !== undefined) {
+          entries.push({ kind: "slot", slot: tile, frame: schedule.referenceFrames[tile], tile });
         }
       }
+      entries.sort((a, b) => a.frame - b.frame);
+
+      entries.forEach((entry, position) => {
+        const next = entries[position + 1];
+        const tileEnd = this._tileEndFrame(entry.tile, schedule);
+        const rightFrame = next ? Math.min(tileEnd, next.frame) : tileEnd;
+        const x = this._frameToX(entry.frame, width);
+        items.push({
+          ...entry,
+          track: "main",
+          virtual: entry.tile >= tileCountReal,
+          x,
+          w: Math.max(3, this._frameToX(rightFrame, width) - x),
+        });
+      });
     }
 
     for (const [track, kind] of [["main", "video"], ["ic", "ic"], ["audio", "audio"]]) {
