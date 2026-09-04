@@ -21,7 +21,9 @@ const DEFAULT_TILE_DURATION = 10;
 const DEFAULT_OVERLAP_DURATION = 2;
 const DEFAULT_TARGET_HEIGHT = 1088;
 const DIRECTOR_SCHEMA_VERSION = 2;
-const DEFAULT_TILE_PROMPT = "The couple continues the choreography at a regular pace while the camera makes a slow orbit toward the next tile's end reference image.";
+const DEFAULT_TILE_PROMPT = "The couple continues the dance without a cut as the phrase carries into a linked step and a slow turn. The camera makes a gentle orbit toward a three-quarter view, ending near this tile's end reference image. Their footfalls stay synchronized and unhurried throughout.";
+// Ghost text in an empty tile card: the shape of a tile prompt, not a scenario.
+const TILE_PROMPT_HINT = "Continuity opener, then what moves, then the camera move and the view it settles into, then \"ending near this tile's end reference image\", then a detail that carries across the seam.";
 const DEFAULT_SETTINGS = {
   frame_rate: DEFAULT_FRAME_RATE,
   total_duration: DEFAULT_TOTAL_DURATION,
@@ -1714,7 +1716,7 @@ class LoopingDirectorEditor {
     };
 
     this.tilePanel = makePanel(this.tileProp, "TILE PROMPT");
-    this.tilePanel.area.placeholder = DEFAULT_TILE_PROMPT;
+    this.tilePanel.area.placeholder = TILE_PROMPT_HINT;
     this.tilePanel.area.addEventListener("input", event => {
       const tile = Math.max(0, this.selectedTile ?? 0);
       this.timeline.tile_prompts[tile] = event.target.value;

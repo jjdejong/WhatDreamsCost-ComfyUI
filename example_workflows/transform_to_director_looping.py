@@ -28,8 +28,10 @@ DEFAULT_TILE_DURATION = 10.0
 DEFAULT_OVERLAP_DURATION = 2.0
 DEFAULT_TARGET_HEIGHT = 1088
 DEFAULT_TILE_PROMPT = (
-    "The couple continues the choreography at a regular pace while the camera makes "
-    "a slow orbit toward the next tile's end reference image."
+    "The couple continues the dance without a cut as the phrase carries into a linked "
+    "step and a slow turn. The camera makes a gentle orbit toward a three-quarter view, "
+    "ending near this tile's end reference image. Their footfalls stay synchronized and "
+    "unhurried throughout."
 )
 def director_note(frame_rate, total_duration, tile_seconds, overlap_seconds, tile_count):
     """Build the sample note from the timing this run actually generated."""
@@ -43,7 +45,8 @@ def director_note(frame_rate, total_duration, tile_seconds, overlap_seconds, til
         f"{tile_count} tile prompt{'s' if tile_count != 1 else ''}.\n\n"
         "**Keyframes:** one slot per tile, at frame 0 and on each tile's last frame. Each tile is generated \"to last image\": it starts from the trailing overlap it inherits from the previous tile and is steered toward the keyframe ending it, which the next tile then inherits as its start reference. A slot left empty simply means no keyframe is used there.\n\n"
         "**Start image:** the Director's conditioning images pass through `LTXV Preprocess` before the sampler, matching the source workflow's compression preprocessing. A text-to-video variant with no keyframes should bypass that node.\n\n"
-        "**Prompting:** keep the global prompt stable and describe shared identity, setting, lighting, style, and audio there. Each tile prompt is one present-tense paragraph covering only that tile's physical action and camera transition. Because the tile is generated toward its end keyframe, name where the motion and the camera finish -- \"ending near the second later reference image\" -- so the prompt lands where the image does. Carry continuity across the seam with phrases like \"without a cut\" or \"continues seamlessly\", describe physical acting cues rather than abstract emotion, and give enough detail to fill the tile duration. Avoid contradicting the global prompt, and avoid cuts or resets."
+        "**Prompting:** the global prompt states, once, the shot type and setting, what must not drift (identity, wardrobe, lighting, environment), the pace and no-cut rule, the composition and look, and the diegetic audio. Keep it stable and never contradict it in a tile.\n\n"
+        "**Tile prompt pattern:** five beats, in order. 1) A continuity opener -- \"The couple continues...\", \"Without a cut, ...\". 2) What moves: one or two specific physical actions, named bodies. 3) The camera move and the view it settles into. 4) A landing clause naming where the tile arrives -- \"ending near the second later reference image\" -- because the tile is generated toward its end keyframe and the prompt has to finish where the image does; the final tile holds instead. 5) A continuity tail: one physical detail that spans the seam. Present tense, one paragraph, physical acting cues over emotion labels, enough detail to fill the tile duration."
     )
 
 

@@ -31,6 +31,14 @@ custom node by default; pass `--base` when the repositories are installed elsewh
 The global prompt is prepended to every tile prompt. Tile prompts describe the action
 and camera transition for that tile and do not span tile boundaries.
 
+Each tile prompt follows five beats: a continuity opener, what moves, the camera move
+and the view it settles into, a landing clause naming where the tile arrives
+("ending near the second later reference image"), and a continuity detail that spans
+the seam. The landing clause is the one that matters most, because the tile is
+generated toward its end keyframe and the prompt has to finish where the image does.
+The worked example is in
+[LTX-2.3_Director_Looping_Basic.md](LTX-2.3_Director_Looping_Basic.md).
+
 `start_image` is the frame-0 timeline image and controls the output aspect and initial
 frame path. `reference_image` is separate: the **External reference** selector chooses
 any timeline keyframe for the external scene/identity anchor path. Its pixels are

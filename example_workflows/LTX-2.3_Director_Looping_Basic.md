@@ -49,11 +49,45 @@ matches the current plan, media, conditioning, and sampler configuration.
 external_pass1_video_latent and external_pass1_audio_latent are optional
 inputs for execution_mode = pass_2_from_inputs.
 
-## Prompt example
+## Prompt pattern
 
 The global prompt is common scene, identity, style, lighting, and audio context.
 Each tile prompt is one flowing paragraph describing only the action and camera
-transition for that tile:
+transition for that tile.
+
+**Global prompt — five things, once:**
+
+1. Shot type, subject, setting: *"Continuous cinematic live-action shot of the same
+   adult couple dancing in a warmly lit rehearsal studio"*.
+2. What must not drift: identity, wardrobe, lighting, environment, stated as holding
+   across the entire clip.
+3. Pace and continuity: *"a natural regular pace without a cut or reset"*.
+4. Composition and look: framing, key surfaces, light quality, grain.
+5. Audio: diegetic sources by name, and what must not appear — *"no music, no
+   dialogue"*.
+
+**Tile prompt — five beats, in order:**
+
+1. **Continuity opener.** Say the shot is carrying on, never that a scene begins:
+   *"The couple continues…"*, *"Without a cut, …"*, *"The choreography continues
+   seamlessly…"*.
+2. **What moves.** Name the bodies and one or two specific physical actions, not a
+   whole routine: *"the woman lowers her raised leg into a controlled step and the man
+   guides her through a slow turn"*.
+3. **Camera move with the view it settles into.** Give a start and an end framing:
+   *"a gentle orbit from the frontal view toward a left three-quarter view"*.
+4. **Landing clause.** Name where the tile arrives: *"ending near the second later
+   reference image"*. This is the beat that matters most — the tile is generated
+   toward its end keyframe, so the prompt has to finish where the image does. The
+   final tile has no next reference, so it holds instead: *"then holds on their
+   relaxed faces … through the final frames"*.
+5. **Continuity tail.** One physical detail that spans the seam: synchronized
+   footfalls, steady breathing, natural eye contact.
+
+Present tense throughout, one paragraph per tile, physical acting cues rather than
+emotion labels, and enough detail to fill the tile's duration.
+
+The example below follows that pattern:
 
 **Global prompt**
 
@@ -88,10 +122,11 @@ transition for that tile:
 > a balanced front-right view, then holds on their relaxed faces, subtle
 > micro-expressions, and steady breathing through the final frames.
 
-These examples follow the main LTX-2.3 guidance: describe the full shot with
-specific subjects, action, setting, lighting, camera behavior, and audio; use
-present-tense natural language; describe physical acting cues instead of abstract
-emotional labels; and keep the prompt detailed enough to fill the duration.
+Read the three tiles together and the pattern is visible: each opens on continuity,
+moves one or two bodies, drives the camera to a named view, lands on its end
+reference, and closes on a physical through-line. Tile 2 is the exception that
+proves the rule — it has no next reference, so its landing clause becomes a hold.
+
 For image-to-video, let the images establish the static appearance and use the
 prompt primarily for what moves next. Keep the global prompt stable and avoid
 contradicting it in a tile prompt.

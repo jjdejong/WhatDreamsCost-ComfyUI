@@ -30,8 +30,10 @@ DEFAULT_TILE_DURATION = 10.0
 DEFAULT_OVERLAP_DURATION = 2.0
 DEFAULT_TARGET_HEIGHT = 1088
 DEFAULT_TILE_PROMPT = (
-    "The couple continues the choreography at a regular pace while the camera makes "
-    "a slow orbit toward the next tile's end reference image."
+    "The couple continues the dance without a cut as the phrase carries into a linked "
+    "step and a slow turn. The camera makes a gentle orbit toward a three-quarter view, "
+    "ending near this tile's end reference image. Their footfalls stay synchronized and "
+    "unhurried throughout."
 )
 
 
